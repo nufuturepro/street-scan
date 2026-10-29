@@ -417,7 +417,13 @@ export default function DashboardClient() {
           open ? 'mt-5 grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
       >
-        <div className="overflow-hidden">
+        {/*
+          Collapsed, this wrapper is 0px tall and clipped - but its children were
+          still focusable, so a keyboard user tabbed into an invisible video
+          player and invisible buttons. inert takes them out of the tab order and
+          the accessibility tree while they are off screen.
+        */}
+        <div className="overflow-hidden" inert={!open}>
           {active && (
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
               <div className="flex flex-wrap items-center gap-3">

@@ -162,7 +162,9 @@ export default function HazardMap({ detections, segments, activeId, onSelect }: 
               <span style={{ color: '#52525b' }}>· RQSI {s.rqsi}</span>
               <div style={{ fontSize: 12, marginTop: 4 }}>
                 {s.lengthM} m · {s.defectCount} defect{s.defectCount === 1 ? '' : 's'}
-                {s.worstSeverity > 0 ? ` · worst severity ${s.worstSeverity}` : ' · none'}
+                {/* "0 defects · none" read as if something were missing - say nothing
+                    when there is nothing to be worst. */}
+                {s.defectCount > 0 ? ` · worst severity ${s.worstSeverity}` : ''}
               </div>
               <div style={{ fontSize: 11, color: '#71717a' }}>
                 segment {s.index + 1} · density {s.density}/100 m

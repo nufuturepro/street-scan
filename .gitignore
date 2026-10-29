@@ -50,6 +50,9 @@ yarn-error.log*
 /.rqsi-*
 /.deploy-*.log
 
+# compiled output of `npm run verify`
+/.verify/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

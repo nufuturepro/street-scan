@@ -17,10 +17,8 @@
  *   5. the real audit's outcome - 3 green + 1 red, RQSI 75 - matching what the
  *      deployed dashboard showed
  *
- * Run, same pattern as verify-filter.ts:
- *   OUT=$(mktemp -d) && npx tsc scripts/verify-rqsi.ts --outDir "$OUT" \
- *     --module commonjs --target es2021 --moduleResolution node \
- *     --esModuleInterop --skipLibCheck --strict false && node "$OUT/scripts/verify-rqsi.js"
+ * Run: npm run verify   (compiles this and verify-filter to .verify/ and runs
+ * them in sequence, stopping at the first failure)
  */
 import {
   SEGMENT_LENGTH_M,

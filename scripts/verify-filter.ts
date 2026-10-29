@@ -6,11 +6,9 @@
  * straddling a seam, arriving as two different object IDs from two separate
  * API responses, plus transients that must be discarded.
  *
- * Run (plain `node` fails: type stripping does not resolve this project's
- * extensionless imports, so compile first):
- *   OUT=$(mktemp -d) && npx tsc scripts/verify-filter.ts --outDir "$OUT" \
- *     --module commonjs --target es2021 --moduleResolution node \
- *     --esModuleInterop --skipLibCheck --strict false && node "$OUT/scripts/verify-filter.js"
+ * Run: npm run verify   (compiles this and verify-rqsi to .verify/ and runs them
+ * in sequence; plain `node` fails because Node's type stripping does not resolve
+ * this project's extensionless imports)
  */
 import { chunkWindows } from '../lib/chunking';
 import { resolveTracks, buildTracks, persists } from '../lib/filter';
