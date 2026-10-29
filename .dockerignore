@@ -1,0 +1,20 @@
+# Never baked into the image: bind-mounted or injected by compose instead.
+.env
+.env.*
+data
+storage
+
+# Build inputs the image produces itself.
+node_modules
+.next
+*.tsbuildinfo
+next-env.d.ts
+
+# Not needed at runtime.
+.git
+.gitignore
+screenshots
+README.md
+AGENTS.md
+Dockerfile
+.dockerignore

@@ -1,0 +1,36 @@
+# StreetScan on NexusDeck.
+#
+# Lives in /DATA/street-scan/ on the host. /DATA is the only writable volume
+# with headroom there - the box's root filesystem is 100% full - and it is
+# also where Docker's data-root sits, so image layers land on the same disk.
+#
+#   DOCKER_CONFIG=$PWD/.dkrcfg docker compose build && docker compose up -d
+#   http://192.168.1.165:3100
+#
+# The DOCKER_CONFIG prefix is not optional on this box: ~/.docker is a symlink
+# to /DATA/.docker, which is root-owned drwxr-xr-x, so buildx cannot create its
+# state directory there. Pointing DOCKER_CONFIG at a directory we own avoids
+# touching the host's permissions.
+#
+# LAN only. Exposing it would mean editing the host's cloudflared config,
+# which this stack deliberately does not touch.
+
+services:
+  street-scan:
+    build: .
+    container_name: street-scan
+    ports:
+      - "3100:3100"
+    # MODEL_API_KEY rides in as an environment variable...
+    env_file:
+      - .env
+    environment:
+      META_API_MODE: live
+    volumes:
+      # ...and .env is also mounted so lib/meta.ts's existsSync('.env') probe
+      # sees it. Read-only: the key never lands in an image layer.
+      - ./.env:/app/.env:ro
+      # SQLite and footage stay on the host so a container rebuild keeps them.
+      - ./data:/app/data
+      - ./storage:/app/storage
+    restart: unless-stopped

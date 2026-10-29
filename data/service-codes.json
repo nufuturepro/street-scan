@@ -1,0 +1,17 @@
+{
+  "_note": "Open311 service codes are set per jurisdiction and are NOT universal. Confirm against the target city's /services catalog before filing anything for real. The 'generic' profile below is a placeholder that works for the demo.",
+  "defaultProfile": "generic",
+  "profiles": {
+    "generic": {
+      "jurisdiction": "Demo jurisdiction",
+      "endpoint": "https://example.city.gov/open311/v2/requests.json",
+      "codes": {
+        "pothole": { "service_code": "POTHOLE", "priority": "P3", "description": "Pothole in roadway" },
+        "cave_in": { "service_code": "SINKHOLE", "priority": "P1", "description": "Road cave-in / suspected sinkhole" },
+        "crack": { "service_code": "STREET_DEFECT", "priority": "P4", "description": "Cracked or deteriorating pavement" },
+        "blocked_lane": { "service_code": "OBSTRUCTION", "priority": "P2", "description": "Lane obstructed" },
+        "debris": { "service_code": "DEBRIS", "priority": "P2", "description": "Debris in roadway" }
+      }
+    }
+  }
+}
