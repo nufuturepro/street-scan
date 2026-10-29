@@ -1,4 +1,4 @@
-import { SEGMENT_LENGTH_M, SEGMENT_SNAP_RADIUS_M, RQSI_DENSITY_K } from './config';
+import { SEGMENT_LENGTH_M, SEGMENT_SNAP_RADIUS_M, SEGMENT_OFF_ROUTE_M, RQSI_DENSITY_K } from './config';
 import type { Detection, GpsSample, GpsTrack, HazardType, RouteSegment, RqsiGrade } from './types';
 
 /**
@@ -116,7 +116,11 @@ function splitRoute(samples: GpsSample[]): Edge[] {
   const total = cum[cum.length - 1];
   if (!(total > 0)) return [];
 
-  const count = Math.max(1, Math.ceil(total / SEGMENT_LENGTH_M));
+  // Summing a track's haversines returns 25.000000000000004 for a 25 m road,
+  // which `ceil` reads as "just over the window" and splits into two 12.5 m
+  // halves - an exact multiple of the window must stay one window. The
+  // tolerance is nanometres; a real extra metre still splits.
+  const count = Math.max(1, Math.ceil(total / SEGMENT_LENGTH_M - 1e-9));
   const step = total / count;
 
   const edges: Edge[] = [];
@@ -212,8 +216,9 @@ export function buildRqsi(opts: {
       }
     }
     if (best < 0) continue;
-    // More than one whole segment away: this fix is not on the driven route.
-    if (bestDist > SEGMENT_LENGTH_M) continue;
+    // Past the off-track limit: nowhere near the driven route, so charging it
+    // to a segment would grade a road this hazard is not actually on.
+    if (bestDist > SEGMENT_OFF_ROUTE_M) continue;
 
     assigned[best].push(d);
     offRouteFlags[best].push(bestDist > SEGMENT_SNAP_RADIUS_M);
@@ -239,7 +244,6 @@ export function buildRqsi(opts: {
       defectCount: dets.length,
       offRoute: offRouteFlags[index].filter(Boolean).length,
       worstSeverity,
-      weighted: Number(weighted.toFixed(2)),
       density: Number(density.toFixed(2)),
       rqsi: clamp(Math.round(100 - density * RQSI_DENSITY_K)),
       grade: gradeOf(dets),
@@ -255,25 +259,22 @@ export type RqsiSummary = {
   counts: Record<RqsiGrade, number>;
   worst: RouteSegment | null;
   totalLengthM: number;
-  defectCount: number;
 };
 
 /**
- * What the Route quality card shows. Length-weighted so one 12 m tail cannot
+ * What the Route quality card shows. Length-weighted so a short stretch cannot
  * drag the headline number around.
  */
 export function summarize(segments: RouteSegment[]): RqsiSummary {
   const counts: Record<RqsiGrade, number> = { green: 0, yellow: 0, red: 0 };
   let weighted = 0;
   let length = 0;
-  let defects = 0;
   let worst: RouteSegment | null = null;
 
   for (const s of segments) {
     counts[s.grade] += 1;
     weighted += s.rqsi * s.lengthM;
     length += s.lengthM;
-    defects += s.defectCount;
     if (!worst) worst = s;
     else if (s.rqsi < worst.rqsi) worst = s;
   }
@@ -283,7 +284,6 @@ export function summarize(segments: RouteSegment[]): RqsiSummary {
     counts,
     worst,
     totalLengthM: length,
-    defectCount: defects,
   };
 }
 

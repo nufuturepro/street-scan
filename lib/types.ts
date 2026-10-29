@@ -131,8 +131,6 @@ export type RouteSegment = {
   offRoute: number;
   /** 0 when the segment is clean */
   worstSeverity: number;
-  /** weighted defect load over the whole segment */
-  weighted: number;
   /** weighted load normalised to 100 m */
   density: number;
   /** 0-100, higher is smoother */

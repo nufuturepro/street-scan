@@ -54,22 +54,34 @@ export const REVIEW_CONFIDENCE_THRESHOLD = 0.75;
  */
 export const SEGMENT_LENGTH_M = 25;
 
-/**
- * A detection this close to a segment belongs to it outright. Further away we
- * still fall back to the nearest segment up to SEGMENT_LENGTH_M - a hand-placed
- * pin sits slightly off the recorded track - and beyond that it is left
- * unassigned rather than degrading a segment it is not actually on.
- */
+/** A detection this close to a segment belongs to it outright. */
 export const SEGMENT_SNAP_RADIUS_M = 30;
 
 /**
+ * Between the snap radius and this distance we still fall back to the nearest
+ * segment: a hand-placed pin sits a little way off the recorded track. Past it
+ * the detection is dropped rather than charged to a segment it is not on.
+ *
+ * This cap used to be SEGMENT_LENGTH_M, which was correct while windows were
+ * 100 m and became dead the moment they shrank to 25 m - a fallback above the
+ * snap radius but below the window can never fire, so every off-track pin was
+ * silently discarded. It is a fixed distance for a reason: how far a pin may
+ * sit from the road has nothing to do with how long a grading window is.
+ * Must stay above SEGMENT_SNAP_RADIUS_M or the band closes again.
+ */
+export const SEGMENT_OFF_ROUTE_M = 60;
+
+/**
  * Index slope: weighted defect load per 100 m of road that costs 100 RQSI
- * points. Calibrated against this project's own detections, not picked:
- *   severity-2 crack at 1.2/100m    -> 95   barely dented, as it should be
- *   severity-4 pothole at 7/100m    -> 72   reportable, not catastrophic
- *   two severe defects inside 25 m  ->  0   genuinely saturated
+ * points. Calibrated against this project's own detections, not picked - the
+ * numbers below are what a 25 m window actually produces, because a defect
+ * sitting in a quarter-window is a quarter-window's worth of rate:
+ *   one severity-2 crack   (4.8/100m) -> 81   barely dented, as it should be
+ *   two severity-2 cracks  (9.6/100m) -> 62   a cracked stretch, not a ruin
+ *   one severity-4 pothole (28/100m)  ->  0   genuinely saturated
  * The grade itself never uses K - grades come from the rubric - so this only
- * shapes the headline number.
+ * shapes the headline number. Asserted by scripts/verify-rqsi.ts; changing K
+ * breaks those assertions on purpose.
  */
 export const RQSI_DENSITY_K = 4;
 

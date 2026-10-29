@@ -6,7 +6,11 @@
  * straddling a seam, arriving as two different object IDs from two separate
  * API responses, plus transients that must be discarded.
  *
- * Run: node --experimental-strip-types scripts/verify-filter.ts
+ * Run (plain `node` fails: type stripping does not resolve this project's
+ * extensionless imports, so compile first):
+ *   OUT=$(mktemp -d) && npx tsc scripts/verify-filter.ts --outDir "$OUT" \
+ *     --module commonjs --target es2021 --moduleResolution node \
+ *     --esModuleInterop --skipLibCheck --strict false && node "$OUT/scripts/verify-filter.js"
  */
 import { chunkWindows } from '../lib/chunking';
 import { resolveTracks, buildTracks, persists } from '../lib/filter';

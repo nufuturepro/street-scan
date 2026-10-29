@@ -75,7 +75,7 @@ to actually work.
 npx tsc --noEmit          # types
 npm run lint              # lint
 npm run build             # build
-node scripts/verify-filter.ts   # after: see below
+# behaviour: compile and run both verify scripts - see below
 ```
 
 The filter script compiles and runs the temporal filter against hand-built cases:
@@ -89,6 +89,20 @@ OUT=$(mktemp -d) && npx tsc scripts/verify-filter.ts --outDir "$OUT" \
 It asserts the three things most likely to be wrong: transients are killed by frame count,
 codec-noise bursts are killed by duration, and a hazard straddling a chunk seam arrives as two
 different object IDs and is re-joined into one track without welding distinct hazards together.
+
+The RQSI script follows the same pattern and is the contract for route grading - splitting,
+snapping, the grade rubric, the index arithmetic, and the real audit:
+
+```bash
+OUT=$(mktemp -d) && npx tsc scripts/verify-rqsi.ts --outDir "$OUT" \
+  --module commonjs --target es2021 --moduleResolution node \
+  --esModuleInterop --skipLibCheck --strict false && node "$OUT/scripts/verify-rqsi.js"
+```
+
+It asserts the cases a browser pass never catches: a track that is an exact multiple of the
+window (float drift used to split a 25 m road into two halves), a pin just outside the snap
+radius, every red/yellow/green boundary in the rubric, the index clamp, and the 78 m audit
+reproducing 3 smooth / 1 hazardous at RQSI 75.
 
 ## Endpoints
 
