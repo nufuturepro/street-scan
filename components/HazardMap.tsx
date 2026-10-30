@@ -143,6 +143,20 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
         // with a "API KEY REQUIRED" watermark tile instead of failing loudly, which
         // silently blanked this map. Esri's Dark Gray Canvas is keyless, and already
         // dark, so no CSS filter is needed to match the UI.
+        //
+        // Esri's Canvas layer does the same thing one zoom further out: it serves
+        // real tiles through z=16 and answers EVERY request above that with HTTP 200
+        // plus a 2,521-byte gray tile reading "Map data not yet available" - so
+        // img.complete stays true, naturalWidth stays 256, no error event fires and
+        // nothing in the app can see the failure. Our own camera goes to 17 (fit()
+        // maxZoom, and row selection calls setView at 17), which is exactly why the
+        // basemap blanked whenever a route was framed or a row was opened.
+        //
+        // maxNativeZoom tells Leaflet the truth about the provider: past 16 it
+        // re-requests the z=16 tile and scales it, so the view stays usable instead
+        // of going gray. Measured 2026-10-30 against this URL: z 9-16 return
+        // 7.9-15.3 KB JPEGs, z 17-20 all return the identical 2,521-byte placeholder.
+        maxNativeZoom={16}
         url="https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
       />
       <MapController located={located} segments={segments} activeId={activeId} />
