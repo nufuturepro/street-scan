@@ -2,6 +2,7 @@ import path from 'node:path';
 import { transcode } from './ffmpeg';
 import { extractGps } from './gps';
 import { extractOverlayGps } from './overlay';
+import { corroboratedIds, groupHazards } from './consensus';
 import { runSegmentation } from './sam';
 import { resolveTracks } from './filter';
 import { classifyTrack } from './spark';
@@ -12,7 +13,9 @@ import {
   deleteDetections,
   getJob,
   insertDetection,
+  listAllDetections,
   listDetections,
+  promoteVerified,
   readGps,
   updateJob,
 } from './repo';
@@ -198,6 +201,14 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
       });
     }
 
+    /* ---- 6. a second pass that agrees is a verification ----
+       Not a human clicking Verify twice for one pothole: two audits agreeing
+       on the type is agreeing about what the thing is, which is what the
+       button means. Disputed groups are excluded by corroboratedIds(), so a
+       disagreement still waits for a person. */
+    const corroborated = corroboratedIds(groupHazards(listAllDetections()));
+    const promoted = promoteVerified(corroborated);
+
     const cost = costTally();
     updateJob(jobId, {
       status: 'ready',
@@ -212,6 +223,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
       message:
         `${listDetections(jobId).length} detections from ${seg.chunks} chunks ` +
         `· ${cost.totalUsd.toFixed(3)} · mode: ${seg.clientMode}` +
+        (promoted ? ` · ${promoted} verified by a second pass` : '') +
         (seg.notice ? ` · ${seg.notice}` : ''),
       clientMode: seg.clientMode,
     });

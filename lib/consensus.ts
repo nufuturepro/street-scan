@@ -137,9 +137,115 @@ export function groupIndex(groups: HazardGroup[]): Map<number, number> {
   return map;
 }
 
+/**
+ * The detections a second pass has earned a verification for.
+ *
+ * Corroborated only: two audits that agree on the type are agreeing about what
+ * the thing IS, which is what a human clicking Verify means. A disputed group
+ * is deliberately absent - disagreement is a reason to look, never a reason to
+ * sign off - and a single pass has no one to corroborate it.
+ */
+export function corroboratedIds(groups: HazardGroup[]): number[] {
+  return groups
+    .filter((g) => g.state === 'corroborated')
+    .flatMap((g) => g.detectionIds);
+}
+
 /* ------------------------------ segments ------------------------------ */
 
-type Bucket = { anchor: RouteSegment; members: RouteSegment[] };
+/** Midpoint-to-midpoint distance between two stretches of road. */
+function midDist(a: RouteSegment, b: RouteSegment): number {
+  return haversineM({ lat: a.midLat, lon: a.midLon }, { lat: b.midLat, lon: b.midLon });
+}
+
+/**
+ * Pairs of stretches that both contain the same hazard - the strongest evidence
+ * there is that two windows describe one piece of road. A detection sits in
+ * exactly one stretch (its own audit's), so each hazard yields one pair per
+ * pair of audits that saw it.
+ */
+function sharedHazardPairs(segments: RouteSegment[], hazards: HazardGroup[]): Pair[] {
+  const segOf = new Map<number, number>();
+  segments.forEach((s, i) => {
+    for (const id of s.detectionIds) if (!segOf.has(id)) segOf.set(id, i);
+  });
+
+  const out: Pair[] = [];
+  for (const g of hazards) {
+    if (g.jobs.length < 2) continue;
+    const owners = [
+      ...new Set(
+        g.detectionIds
+          .map((id) => segOf.get(id))
+          .filter((i): i is number => i != null)
+      ),
+    ];
+    for (let x = 0; x < owners.length; x++) {
+      for (let y = x + 1; y < owners.length; y++) {
+        const a = segments[owners[x]];
+        const b = segments[owners[y]];
+        if (a.jobId === b.jobId) continue;
+        out.push({ i: owners[x], j: owners[y], dist: midDist(a, b) });
+      }
+    }
+  }
+  return out;
+}
+
+type Pair = { i: number; j: number; dist: number };
+
+/**
+ * Maximum bipartite matching between two audits' segments (Kuhn's augmenting
+ * paths).
+ *
+ * Greedy input order cannot see the swap: A1 claims its nearest window B1, A2's
+ * only option was B1, and A1 fits B2 just as well - one merge where two were
+ * possible. Augmenting paths re-route A1 to B2 and hand B1 to A2, which is the
+ * difference between merging most shared streets and merging some of them.
+ * O(V*E) over a few dozen segments - microseconds.
+ */
+function bestPairs(
+  left: number[],
+  right: number[],
+  segments: RouteSegment[],
+  canMerge: (i: number, j: number) => boolean
+): Pair[] {
+  const adj = left.map((li) =>
+    right
+      .map((rj, j) =>
+        midDist(segments[li], segments[rj]) <= SEGMENT_MERGE_M && canMerge(li, rj) ? j : -1
+      )
+      .filter((j) => j >= 0)
+  );
+  const matched = new Array<number>(right.length).fill(-1);
+
+  const augment = (i: number, seen: boolean[]): boolean => {
+    for (const j of adj[i]) {
+      if (seen[j]) continue;
+      seen[j] = true;
+      if (matched[j] === -1 || augment(matched[j], seen)) {
+        matched[j] = i;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (let i = 0; i < left.length; i++) {
+    augment(i, new Array<boolean>(right.length).fill(false));
+  }
+
+  const pairs: Pair[] = [];
+  matched.forEach((i, j) => {
+    if (i < 0) return;
+    pairs.push({
+      i: left[i],
+      j: right[j],
+      dist: midDist(segments[left[i]], segments[right[j]]),
+    });
+  });
+  return pairs;
+}
 
 /**
  * Collapse segments from different audits that grade the same stretch of
@@ -156,48 +262,78 @@ export function mergeSegments(
   segments: RouteSegment[],
   hazards: HazardGroup[] = []
 ): RouteSegment[] {
-  const buckets: Bucket[] = [];
-  const cells = new Map<string, Bucket[]>();
+  // Which audit drove which stretch. Membership is capped at one stretch per
+  // audit per group - the same rule the hazard grouping runs on.
+  const byJob = new Map<number, number[]>();
+  segments.forEach((s, i) => {
+    const list = byJob.get(s.jobId);
+    if (list) list.push(i);
+    else byJob.set(s.jobId, [i]);
+  });
 
-  for (const s of segments) {
-    const point = { lat: s.midLat, lon: s.midLon };
-    const [row, col] = cellKey(point.lat, point.lon, SEGMENT_MERGE_M)
-      .split(':')
-      .map(Number);
-
-    let best: Bucket | null = null;
-    let bestDist = Infinity;
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        for (const bucket of cells.get(`${row + dr}:${col + dc}`) ?? []) {
-          if (bucket.members.some((m) => m.jobId === s.jobId)) continue;
-          const dist = haversineM(
-            { lat: bucket.anchor.midLat, lon: bucket.anchor.midLon },
-            point
-          );
-          if (dist <= SEGMENT_MERGE_M && dist < bestDist) {
-            best = bucket;
-            bestDist = dist;
-          }
-        }
-      }
+  const parent = segments.map((_, i) => i);
+  const members: number[][] = segments.map((_, i) => [i]);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
     }
-
-    if (best) {
-      best.members.push(s);
-    } else {
-      const bucket: Bucket = { anchor: s, members: [s] };
-      buckets.push(bucket);
-      const key = cellKey(point.lat, point.lon, SEGMENT_MERGE_M);
-      const bucketList = cells.get(key);
-      if (bucketList) bucketList.push(bucket);
-      else cells.set(key, [bucket]);
+    return i;
+  };
+  const unionAll = (list: Pair[]) => {
+    for (const p of [...list].sort((a, b) => a.dist - b.dist)) {
+      const ra = find(p.i);
+      const rb = find(p.j);
+      if (ra === rb) continue;
+      const jobsA = new Set(members[ra].map((k) => segments[k].jobId));
+      if (members[rb].some((k) => jobsA.has(segments[k].jobId))) continue;
+      parent[rb] = ra;
+      members[ra].push(...members[rb]);
     }
+  };
+
+  // Phase 1: fix the pairs that contain the same hazard. Done before any
+  // distance matching, because a geometrically convenient swap elsewhere in the
+  // street must never separate one pothole's two sightings into two stretches.
+  unionAll(sharedHazardPairs(segments, hazards));
+
+  // Phase 2: pair up what is left by geometry, as a maximum matching.
+  //
+  // The matching is offered exactly the pairs unionAll would accept - both
+  // groups' jobs disjoint, which covers a partner phase 1 has already claimed.
+  // Offering a pair that will be thrown away is not harmless: the matching
+  // spends a slot on it and strands a window that had no other neighbour, so a
+  // shared street silently stays unmerged. Measured on jobs 4 and 6's first
+  // geometry, that cost one stretch in three; the contract in
+  // scripts/verify-consensus.ts fails if it comes back.
+  const canMerge = (i: number, j: number) => {
+    const jobsA = members[find(i)].map((k) => segments[k].jobId);
+    return !members[find(j)].some((k) => jobsA.includes(segments[k].jobId));
+  };
+  const jobs = [...byJob.keys()];
+  const pairs: Pair[] = [];
+  for (let x = 0; x < jobs.length; x++) {
+    for (let y = x + 1; y < jobs.length; y++) {
+      pairs.push(
+        ...bestPairs(byJob.get(jobs[x])!, byJob.get(jobs[y])!, segments, canMerge)
+      );
+    }
+  }
+  unionAll(pairs);
+
+  const buckets: number[][] = [];
+  const done = new Set<number>();
+  for (let i = 0; i < segments.length; i++) {
+    const root = find(i);
+    if (done.has(root)) continue;
+    done.add(root);
+    buckets.push(members[root]);
   }
 
   const groupOf = groupIndex(hazards);
 
-  return buckets.map(({ members }) => {
+  return buckets.map((idxs) => {
+    const members = idxs.map((k) => segments[k]);
     // Longest contributor supplies the drawn geometry: it is the better
     // measured description of the road, and merging must not invent one.
     const lead = members.reduce((a, b) => (b.lengthM > a.lengthM ? b : a));

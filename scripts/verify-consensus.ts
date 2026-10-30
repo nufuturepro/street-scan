@@ -14,6 +14,10 @@
  *      shared metres are counted once (case 7-9) - the double count is the
  *      whole reason merging exists.
  *
+ * Also covered: the matching must be MAXIMUM, not first-come (case 10), street
+ * names canonicalised across passes, and which detections a second pass earns
+ * a verification for - corroborated only, never disputed.
+ *
  * Everything runs offline in milliseconds against synthetic geometry at the
  * same city scale as the real audit.
  *
@@ -21,7 +25,8 @@
  */
 import { CONSENSUS_RADIUS_M, SEGMENT_MERGE_M, SEGMENT_LENGTH_M } from '../lib/config';
 import { buildRqsi, summarize } from '../lib/rqsi';
-import { groupHazards, groupIndex, mergeSegments } from '../lib/consensus';
+import { corroboratedIds, groupHazards, groupIndex, mergeSegments } from '../lib/consensus';
+import { canonicalStreets, streetKey } from '../lib/streets';
 import type { Detection, GpsSample, HazardType, RouteSegment } from '../lib/types';
 
 function assert(cond: boolean, msg: string): void {
@@ -264,5 +269,187 @@ assert(
   'both sightings map to one hazard id'
 );
 assert(SEGMENT_MERGE_M === SEGMENT_LENGTH_M, 'segment merging uses one grading window');
+
+/* --------------------- 3. maximum, not first-come --------------------- */
+
+console.log('\n# maximum matching');
+
+/** A hand-placed stretch: geometry only, so the matching can be reasoned about. */
+function seg(
+  jobId: number,
+  index: number,
+  midEast: number,
+  grade: RouteSegment['grade'] = 'green'
+): RouteSegment {
+  const a = at(midEast - SEGMENT_LENGTH_M / 2, 0);
+  const b = at(midEast + SEGMENT_LENGTH_M / 2, 0);
+  const m = at(midEast, 0);
+  return {
+    jobId,
+    jobIds: [jobId],
+    passes: 1,
+    disagree: false,
+    index,
+    lat1: a.lat,
+    lon1: a.lon,
+    lat2: b.lat,
+    lon2: b.lon,
+    midLat: m.lat,
+    midLon: m.lon,
+    lengthM: SEGMENT_LENGTH_M,
+    detectionIds: [],
+    defectCount: 0,
+    offRoute: 0,
+    worstSeverity: 0,
+    density: 0,
+    rqsi: 100,
+    grade,
+  };
+}
+
+// The case input-order greedy fails: A1 sits on B1 (its nearest) and also
+// fits B2, while A2's ONLY option is B1. Greedy gives A1 -> B1 and strands A2;
+// augmenting paths move A1 to B2 and hand B1 to A2, merging both.
+const a1 = seg(4, 0, 0);
+const a2 = seg(4, 1, 22);
+const b1 = seg(6, 0, 0);
+const b2 = seg(6, 1, -20);
+
+const swapped = mergeSegments([a1, a2, b1, b2]);
+assert(
+  swapped.length === 2,
+  `both overlapping pairs merge, not just the nearest - got ${swapped.length} stretches`
+);
+assert(
+  swapped.every((s) => s.passes === 2),
+  'every result of the swap carries both audits'
+);
+assert(
+  mergeSegments([a1, a2]).length === 2,
+  'two stretches of the SAME audit never merge, however close'
+);
+
+// A shared hazard claims its two stretches in phase 1. Phase 2 must then reach
+// the maximum over what is LEFT, not offer the claimed partner again - a
+// window whose only neighbour was the claimed one would be stranded twice over
+// and a third stretch left unmerged.
+//
+// Geometry is jobs 4 and 6's own: four windows a side, where A0 has exactly one
+// neighbour (B0), A1 and A2 share B0/B1, and A3 has only B2. Three merges are
+// the maximum once the hazard claims A1-B0.
+const tagged = (s: RouteSegment, id: number): RouteSegment => ({
+  ...s,
+  detectionIds: [id],
+});
+const claimed = mergeSegments(
+  [
+    seg(4, 0, 0),
+    tagged(seg(4, 1, 22), 1),
+    seg(4, 2, 44),
+    seg(4, 3, 66),
+    tagged(seg(6, 0, 0), 2),
+    seg(6, 1, 26),
+    seg(6, 2, 52),
+  ],
+  groupHazards([
+    det({ id: 1, jobId: 4, east: 5 }),
+    det({ id: 2, jobId: 6, east: 5 }),
+  ])
+);
+const mergedTwice = claimed.filter((s) => s.passes === 2).length;
+assert(
+  mergedTwice === 3,
+  `a phase-1 claim costs no merge elsewhere - got ${mergedTwice} of 3 possible`
+);
+assert(
+  claimed.length === 4 && claimed.some((s) => s.passes === 1),
+  `the one window with no free neighbour stays on its own - got ${claimed.length} stretches`
+);
+assert(
+  claimed.some((s) => s.detectionIds.join(',') === '1,2'),
+  'the shared hazard survives the merge it was claimed for'
+);
+
+/* --------------------------- 4. street names --------------------------- */
+
+console.log('\n# street names');
+
+assert(
+  streetKey('Hart St') === streetKey('Hart Street') &&
+    streetKey('Malcolm X Blvd') === streetKey('Malcolm X Boulevard') &&
+    streetKey('De Kalb Av') === streetKey('De Kalb Avenue'),
+  'abbreviations fold into one street identity'
+);
+assert(
+  streetKey('Hart Street') !== streetKey('Broadway'),
+  'different streets stay different'
+);
+
+const names = (list: Detection[], field: 'street' | 'crossStreet') =>
+  [...canonicalStreets(list).values()].map((v) => v[field]);
+
+const signDisagree: Detection[] = [
+  { ...det({ id: 1, jobId: 4, east: 0 }), street: 'Hart St', crossStreet: null, osmStreet: 'Hart Street' },
+  { ...det({ id: 2, jobId: 6, east: 4 }), street: 'Hart Street', crossStreet: null, osmStreet: 'Hart Street' },
+];
+assert(
+  names(signDisagree, 'street').every((s) => s === 'Hart Street'),
+  `two passes and the map agree on one spelling - got ${JSON.stringify(names(signDisagree, 'street'))}`
+);
+
+const noMap: Detection[] = [
+  { ...det({ id: 1, jobId: 4, east: 0 }), street: 'Lorimer St', osmStreet: null },
+  { ...det({ id: 2, jobId: 6, east: 4 }), street: 'Lorimer St', osmStreet: null },
+  { ...det({ id: 3, jobId: 7, east: 8 }), street: 'Lorimer St', osmStreet: null },
+  { ...det({ id: 4, jobId: 8, east: 12 }), street: 'Lorimer Street', osmStreet: null },
+];
+assert(
+  names(noMap, 'street').every((s) => s === 'Lorimer St'),
+  `without the map, the majority spelling wins - got ${JSON.stringify([...new Set(names(noMap, 'street'))])}`
+);
+
+// A corner where the map names a DIFFERENT street than the sign: both are
+// true (they cross), so the existing osmDisagrees flag must survive untouched.
+const corner: Detection[] = [
+  {
+    ...det({ id: 1, jobId: 4, east: 0 }),
+    street: 'Stuyvesant Ave',
+    crossStreet: 'Broadway',
+    osmStreet: 'Broadway',
+  },
+];
+const cornerNames = [...canonicalStreets(corner).values()][0];
+assert(
+  cornerNames.street === 'Stuyvesant Ave',
+  `a map disagreement is never silently renamed - got ${cornerNames.street}`
+);
+assert(
+  cornerNames.crossStreet === 'Broadway',
+  'the cross street is canonicalised too'
+);
+
+/* ------------------------ 5. what earns a verify ------------------------ */
+
+console.log('\n# verification by corroboration');
+
+const mixed = groupHazards([
+  det({ id: 10, jobId: 4, east: 0, type: 'pothole' }),
+  det({ id: 11, jobId: 6, east: 6, type: 'pothole' }), // agrees -> verified
+  det({ id: 12, jobId: 4, east: 400, type: 'pothole' }),
+  det({ id: 13, jobId: 6, east: 406, type: 'crack' }), // clashes -> a human
+]);
+const promotable = corroboratedIds(mixed);
+assert(
+  promotable.slice().sort((a, b) => a - b).join(',') === '10,11',
+  `only the agreeing pair is promoted - got ${promotable.join(',')}`
+);
+assert(
+  !promotable.includes(12) && !promotable.includes(13),
+  'a disputed pair is never auto-verified'
+);
+assert(
+  corroboratedIds(groupHazards([det({ id: 99, jobId: 4, east: 0 })])).length === 0,
+  'a single pass verifies nothing'
+);
 
 console.log(process.exitCode ? '\nFAILED' : '\nAll consensus assertions passed.');

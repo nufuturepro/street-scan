@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { db, storageRoot } from './db';
+import { canonicalStreets } from './streets';
 import type { Detection, GpsTrack, Job, JobStatus, Polygon } from './types';
 
 /**
@@ -221,17 +222,55 @@ export function getDetection(id: number): Detection | null {
 }
 
 export function listAllDetections(): Detection[] {
+  return canonicalize(readAllDetections());
+}
+
+export function listDetections(jobId: number): Detection[] {
+  const all = readAllDetections();
+  return canonicalize(
+    all.filter((d) => d.jobId === jobId),
+    all
+  );
+}
+
+function readAllDetections(): Detection[] {
   const rows = db()
     .prepare('SELECT * FROM detections ORDER BY job_id ASC, t_ms ASC')
     .all() as DetectionRow[];
   return rows.map(toDetection);
 }
 
-export function listDetections(jobId: number): Detection[] {
-  const rows = db()
-    .prepare('SELECT * FROM detections WHERE job_id = ? ORDER BY t_ms ASC')
-    .all(jobId) as DetectionRow[];
-  return rows.map(toDetection);
+/**
+ * Spell every street the way the whole table spells it, not the way this view
+ * happens to - so a single-audit page and the all-jobs dashboard cannot
+ * disagree. See lib/streets.ts; nothing here is written back.
+ */
+function canonicalize(rows: Detection[], voters?: Detection[]): Detection[] {
+  const canon = canonicalStreets(rows, voters);
+  return rows.map((d) => {
+    const names = d.id != null ? canon.get(d.id) : undefined;
+    return names ? { ...d, street: names.street, crossStreet: names.crossStreet } : d;
+  });
+}
+
+/**
+ * A second audit that reaches the same conclusion is a verification, so the
+ * human does not have to click Verify twice for one pothole.
+ *
+ * Only ever upgrades `detected`: a human who filed a work order keeps it filed,
+ * and a disputed group is never promoted - two passes that disagree are a
+ * reason to look, not a reason to sign off. Returns the rows changed.
+ */
+export function promoteVerified(ids: number[]): number {
+  if (!ids.length) return 0;
+  const marks = ids.map(() => '?').join(',');
+  const res = db()
+    .prepare(
+      `UPDATE detections SET review_status = 'verified' ` +
+        `WHERE review_status = 'detected' AND id IN (${marks})`
+    )
+    .run(...ids);
+  return Number(res.changes);
 }
 
 export function updateDetectionStatus(

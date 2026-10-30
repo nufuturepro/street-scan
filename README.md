@@ -20,6 +20,7 @@ original ──exiftool──► GPS samples {t, lat, lon}        (recorded in-c
    [filter]   ≥6 frames AND ≥0.6s → keep · IoU merge across the chunk seam
    [geo]      interpolate → GPS sample | null → overlay OCR | manual pin
    [consensus] across audits → same defect seen twice → corroborated · disputed
+               one spelling per street · a second pass that agrees = verified
    [Spark]    crop + full frame → {hazardType, severity, confidence, streetContext}
    [OSM]      Overpass reverse-geocode → validate the OCR'd street name, disagree → flag
    [Open311]  → SQLite → split-screen inspection UI → dispatch dashboard
@@ -82,7 +83,7 @@ to actually work.
 npx tsc --noEmit          # types
 npm run lint              # lint
 npm run build             # build
-npm run verify            # behaviour: 154 assertions across four verify scripts
+npm run verify            # behaviour: 169 assertions across four verify scripts
 ```
 
 `npm run verify` compiles the four `scripts/verify-*.ts` files to `.verify/`
@@ -113,8 +114,15 @@ two passes agreeing on a defect, two passes calling it different things, and -
 the case the whole design turns on - a 10 m chain of detections from one audit
 that must never weld a single drive into one hazard. It also pins the merging
 arithmetic: the worse grade wins, shared metres count once (the same 50 m
-street reads 50 m unmerged 100 m), and two sightings of one pothole are one
-defect.
+street reads 50 m unmerged 100 m), two sightings of one pothole are one defect,
+and the matching must be MAXIMUM rather than first-come - the fixture there is
+a pair of stretches where input-order greedy merges one and augmenting paths
+merge two, plus a four-window street where a hazard that has already claimed
+its partner must not be offered to the matching again: offered, it strands two
+windows and merges two stretches where three were possible. Street naming is
+covered too: `Hart St` and `Hart Street` collapse to
+one identity while `Stuyvesant Ave` against OSM's `Broadway` stays a disagreement,
+and only a corroborated pair - never a disputed one - earns a verification.
 
 ## Endpoints
 
