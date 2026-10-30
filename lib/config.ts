@@ -24,6 +24,30 @@ export const PLAYBACK_SIZE = '1280x720';
 /** Max frames per SAM request. Hard API cap is 15,000. */
 export const CHUNK_FRAMES = 3000;
 
+/**
+ * Burned-in GPS overlay (overlay.ts): frames sampled per second while reading
+ * the corner of the picture. 1Hz matches how often the app rewrites the fix.
+ */
+export const OVERLAY_SAMPLE_FPS = 1;
+
+/**
+ * Corner of the frame the overlay text lives in, as fractions of width/height.
+ * Measured on a 1080p night clip: the two-line block ends near x=0.85, y=0.11.
+ */
+export const OVERLAY_CROP_W = 0.85;
+export const OVERLAY_CROP_H = 0.11;
+
+/**
+ * A fix further than this from the fix on either side of it is a misread or a
+ * GPS spike, not a drive. Measured on the dashcam clip: one frame sat 74 m
+ * from the fix 3 s before it and 73 m from the one 1 s after it - a hairpin no
+ * vehicle makes, which would otherwise be spliced into the graded route as
+ * ~150 m of phantom street. Real movement in that clip peaks at 4.4 m/s, so
+ * this sits an order of magnitude clear of honest motion while still allowing
+ * a long OCR blackout to move the car legitimately.
+ */
+export const OVERLAY_SPIKE_M = 50;
+
 /** Frames of overlap between chunks, used to re-join object IDs. */
 export const CHUNK_OVERLAP_FRAMES = 150;
 

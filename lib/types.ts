@@ -54,7 +54,8 @@ export type GpsSample = {
 };
 
 export type GpsTrack = {
-  source: 'exiftool' | 'gpx' | 'manual' | 'none';
+  /** 'overlay' = read out of text the recording app burned into the frame. */
+  source: 'exiftool' | 'gpx' | 'overlay' | 'manual' | 'none';
   samples: GpsSample[];
 };
 

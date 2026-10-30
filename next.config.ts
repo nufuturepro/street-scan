@@ -9,7 +9,10 @@ const nextConfig: NextConfig = {
   // Bundling it into .next rewrites that path to .next/server, so
   // exiftoolPath() throws "Failed to find ExifTool installation" at runtime -
   // which surfaced as a silent "no GPS in file".
-  serverExternalPackages: ['exiftool-vendored'],
+  // tesseract.js does the same thing with its worker script: bundling rewrote
+  // __dirname to Turbopack's virtual /ROOT, so createWorker() failed with
+  // "Cannot find module /ROOT/node_modules/tesseract.js/src/worker-script/...".
+  serverExternalPackages: ['exiftool-vendored', 'tesseract.js'],
   turbopack: {
     rules: {
       "*.css": {

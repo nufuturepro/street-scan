@@ -9,6 +9,8 @@ asks Muse Spark what the thing actually *is* and assembles an Open311 payload.
 
 ```
 original ──exiftool──► GPS samples {t, lat, lon}        (recorded in-camera at capture)
+  └ no track ──ffmpeg + OCR──► the same samples, read back out of the
+                               text an app burned into the frame
   └─flatten to MP4──► footage.mp4
         │
    [ffmpeg] ──► playback.mp4 (720p@30)  +  analysis.mp4 (480p@10)
@@ -48,6 +50,10 @@ Requires **ffmpeg/ffprobe** on PATH (`winget install Gyan.FFmpeg`), or set `FFMP
 `FFPROBE_PATH`. Nothing else is needed — storage is SQLite via Node's built-in `node:sqlite`,
 the map is Leaflet with OpenStreetMap tiles (no API keys).
 
+A clip whose GPS is burned into the picture instead of tracked needs `tesseract.js`, which
+fetches its English language data once (needs the network that one time) and caches it in
+`storage/tesseract/`, a mounted volume, so no container restart refetches it.
+
 ## ⚠️ Billing status: running on fixtures
 
 Your Meta Model API key currently returns:
@@ -75,10 +81,10 @@ to actually work.
 npx tsc --noEmit          # types
 npm run lint              # lint
 npm run build             # build
-npm run verify            # behaviour: 109 assertions across both verify scripts
+npm run verify            # behaviour: 125 assertions across three verify scripts
 ```
 
-`npm run verify` compiles `scripts/verify-filter.ts` and `scripts/verify-rqsi.ts` to `.verify/`
+`npm run verify` compiles the three `scripts/verify-*.ts` files to `.verify/`
 (gitignored) and runs them in sequence, stopping at the first failure: a failing assertion exits
 non-zero, so the command is safe to wire into CI or a pre-commit hook. Plain
 `node scripts/*.ts` does not work - Node's type stripping does not resolve this project's
@@ -94,6 +100,12 @@ index arithmetic, and the real audit. It asserts the cases a browser pass never 
 that is an exact multiple of the window (float drift used to split a 25 m road into two halves),
 a pin just outside the snap radius, every red/yellow/green boundary in the rubric, the index
 clamp, and the 78 m audit reproducing 3 smooth / 1 hazardous at RQSI 75.
+
+The overlay script is the contract for reading GPS out of the picture: the real lines off the
+dashcam clip parse to the coordinates the clip shows, OCR damage (an eaten colon, a missing
+space) is tolerated, a fused decimal and an out-of-range value are rejected rather than
+believed, and a fix that leaves the route and comes straight back is dropped as a misread
+while a genuine shift is kept.
 
 ## Endpoints
 

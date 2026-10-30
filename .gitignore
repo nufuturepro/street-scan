@@ -53,6 +53,10 @@ yarn-error.log*
 # compiled output of `npm run verify`
 /.verify/
 
+# tesseract language data (5 MB): the runtime caches it under storage/, but a
+# script that forgets to pass cachePath drops it in the repo root
+*.traineddata
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { transcode } from './ffmpeg';
 import { extractGps } from './gps';
+import { extractOverlayGps } from './overlay';
 import { runSegmentation } from './sam';
 import { resolveTracks } from './filter';
 import { classifyTrack } from './spark';
@@ -94,6 +95,16 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
     if (!gps.samples.length && gpsFile) {
       report({ stage: 'gps', done: 0, total: 1, message: 'reading GPS from source file' });
       gps = await extractGps(gpsFile);
+
+      // Some apps keep no track at all and burn the fix into the picture
+      // instead. Reading it back out of the footage is the last resort before
+      // the job gives up on geo and asks for a manual pin.
+      if (!gps.samples.length && job.footagePath) {
+        report({ stage: 'gps', done: 0, total: 1, message: 'reading burned-in GPS overlay' });
+        gps = await extractOverlayGps(job.footagePath, (done, total) =>
+          report({ stage: 'gps', done, total, message: `overlay OCR ${done}/${total} frames` })
+        );
+      }
       updateJob(jobId, {
         gps_source: gps.source,
         gps_json: JSON.stringify(gps),
@@ -104,7 +115,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
         total: 1,
         message: gps.samples.length
           ? `${gps.samples.length} GPS fixes (${gps.source})`
-          : 'no GPS in file - hazards will need a manual pin',
+          : 'no GPS track - hazards will need a manual pin',
       });
     }
 
