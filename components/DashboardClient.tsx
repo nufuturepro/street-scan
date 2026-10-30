@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import VideoPane from './VideoPane';
 import WorkOrderPanel from './WorkOrderPanel';
-import type { Detection, Job, RouteSegment } from '@/lib/types';
+import type { Detection, HazardGroup, Job, RouteSegment } from '@/lib/types';
 import { GRADE_COLOR, GRADE_LABEL, summarize } from '@/lib/rqsi';
 
 const HazardMap = dynamic(() => import('./HazardMap'), {
@@ -61,6 +61,7 @@ export default function DashboardClient() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [segments, setSegments] = useState<RouteSegment[]>([]);
+  const [hazards, setHazards] = useState<HazardGroup[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [type, setType] = useState('all');
   const [status, setStatus] = useState('all');
@@ -81,11 +82,13 @@ export default function DashboardClient() {
         jobs: Job[];
         detections: Detection[];
         segments?: RouteSegment[];
+        hazards?: HazardGroup[];
       };
       setJobs(data.jobs);
       setDetections(data.detections);
       // Absent only if an older server is answering; the map then draws no route.
       setSegments(data.segments ?? []);
+      setHazards(data.hazards ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -161,8 +164,23 @@ export default function DashboardClient() {
   // picks which route you are reading. Deliberately not a useMemo, for the same
   // React Compiler reason as jobDetections below.
   const visibleSegments =
-    jobId === 'all' ? segments : segments.filter((s) => s.jobId === Number(jobId));
+    jobId === 'all'
+      ? segments
+      : segments.filter((s) => s.jobIds.includes(Number(jobId)));
   const route = summarize(visibleSegments);
+
+  // Which physical hazard each row belongs to, so a detection a second audit
+  // also saw can say so in the queue. Not a useMemo: `hazards` is reassigned by
+  // the 5s poll like `detections` is, and React Compiler drops a memo keyed on
+  // a value that changes identity every five seconds.
+  const hazardOf = new Map<number, HazardGroup>();
+  for (const g of hazards) for (const id of g.detectionIds) hazardOf.set(id, g);
+
+  const corroborated = hazards.filter((g) => g.state === 'corroborated').length;
+  const disputedHazards = hazards.filter((g) => g.state === 'disputed').length;
+  const sharedStretches = visibleSegments.filter((s) => s.passes > 1).length;
+  const disagreeingStretches = visibleSegments.filter((s) => s.disagree).length;
+  const passesInView = new Set(visibleSegments.flatMap((s) => s.jobIds)).size;
 
   const active = detections.find((d) => d.id === activeId) ?? null;
   const activeJob = active ? (jobs.find((j) => j.id === active.jobId) ?? null) : null;
@@ -241,6 +259,7 @@ export default function DashboardClient() {
           <HazardMap
             detections={filtered}
             segments={visibleSegments}
+            hazards={hazards}
             activeId={activeId}
             onSelect={setActive}
           />
@@ -257,7 +276,9 @@ export default function DashboardClient() {
                   Nothing matches these filters.
                 </li>
               )}
-              {filtered.map((d) => (
+              {filtered.map((d) => {
+                const group = hazardOf.get(d.id!);
+                return (
                 <li
                   key={d.id}
                   className={`flex items-center gap-2 py-2 ${
@@ -286,6 +307,22 @@ export default function DashboardClient() {
                         'location not placed'}
                     </div>
                   </button>
+                  {group && group.passes > 1 && (
+                    <span
+                      className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
+                        group.state === 'disputed'
+                          ? 'border-amber-700 bg-amber-950 text-amber-300'
+                          : 'border-emerald-700 bg-emerald-950 text-emerald-300'
+                      }`}
+                      title={
+                        group.state === 'disputed'
+                          ? `${group.passes} passes saw this spot and disagreed on what it is`
+                          : `${group.passes} independent passes agree on this hazard`
+                      }
+                    >
+                      {group.state === 'disputed' ? 'disputed' : `${group.passes} passes`}
+                    </span>
+                  )}
                   <button
                     onClick={() => cycleStatus(d)}
                     className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
@@ -300,7 +337,8 @@ export default function DashboardClient() {
                     {d.reviewStatus}
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </div>
 
@@ -357,6 +395,22 @@ export default function DashboardClient() {
                     </span>
                   ))}
                 </div>
+                {corroborated + disputedHazards + sharedStretches > 0 && (
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    {corroborated} corroborated · {disputedHazards} disputed hazard
+                    {corroborated + disputedHazards === 1 ? '' : 's'}
+                    {passesInView > 1
+                      ? ` · ${sharedStretches} shared stretch${sharedStretches === 1 ? '' : 'es'} across ${passesInView} passes`
+                      : ''}
+                  </p>
+                )}
+                {disagreeingStretches > 0 && (
+                  <p className="mt-1 text-[11px] text-amber-400">
+                    {disagreeingStretches} stretch
+                    {disagreeingStretches === 1 ? '' : 'es'} graded differently by
+                    different runs
+                  </p>
+                )}
                 {route.worst && (
                   <p className="mt-2 text-xs text-zinc-400">
                     Worst: segment {route.worst.index + 1} ·{' '}

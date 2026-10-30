@@ -78,6 +78,27 @@ export const REVIEW_CONFIDENCE_THRESHOLD = 0.75;
  */
 export const SEGMENT_LENGTH_M = 25;
 
+/**
+ * How close two detections from DIFFERENT audits must be to count as the same
+ * hazard seen twice (consensus.ts).
+ *
+ * Measured on this project's own three jobs, not guessed: at 12 m the two
+ * passes share nothing at all, at 20 m exactly one genuine cross-pass
+ * disagreement surfaces, and at 25 m - a whole grading window - unrelated
+ * defects start pairing up. The tight radius is deliberate: corroboration is a
+ * claim that this is the same physical defect, and a wrong match is worse than
+ * a missed one.
+ */
+export const CONSENSUS_RADIUS_M = 20;
+
+/**
+ * How close two route segments from different audits must be to be the same
+ * stretch of street. A segment is SEGMENT_LENGTH_M long, so two windows that
+ * cover the same road have midpoints within one window of each other - the real
+ * audit's segments all landed 9-19 m from job 6's.
+ */
+export const SEGMENT_MERGE_M = SEGMENT_LENGTH_M;
+
 /** A detection this close to a segment belongs to it outright. */
 export const SEGMENT_SNAP_RADIUS_M = 30;
 

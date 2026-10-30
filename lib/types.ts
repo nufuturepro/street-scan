@@ -116,7 +116,14 @@ export type RqsiGrade = 'green' | 'yellow' | 'red';
 
 /** One graded stretch of the camera's own GPS track. */
 export type RouteSegment = {
+  /** the first audit that contributed to this stretch */
   jobId: number;
+  /** every audit whose route covers this stretch */
+  jobIds: number[];
+  /** distinct audits covering it: 1 = one pass, 2+ = cross-audit corroboration */
+  passes: number;
+  /** the contributing audits graded this stretch differently */
+  disagree: boolean;
   /** 0-based position along the route, so segments can be listed in order */
   index: number;
   lat1: number;
@@ -137,6 +144,30 @@ export type RouteSegment = {
   /** 0-100, higher is smoother */
   rqsi: number;
   grade: RqsiGrade;
+};
+
+/**
+ * One physical hazard, as seen across every audit that drove past it.
+ *
+ * Derived at read time from the detections table, exactly like RouteSegment:
+ * nothing is stored, so a re-run cannot corrupt it and the three jobs already
+ * on disk get consensus the moment the dashboard loads.
+ */
+export type HazardGroup = {
+  id: number;
+  /** the winning sighting's coordinates - never an average of two defects */
+  lat: number;
+  lon: number;
+  hazardType: HazardType;
+  severity: 1 | 2 | 3 | 4 | 5;
+  confidence: number;
+  /** every detection id in the group, including the winner */
+  detectionIds: number[];
+  /** the audits that saw it - one sighting per audit, by construction */
+  jobs: number[];
+  passes: number;
+  /** single = one pass · corroborated = passes agree · disputed = they don't */
+  state: 'single' | 'corroborated' | 'disputed';
 };
 
 /** Structured response we ask Muse Spark for. */

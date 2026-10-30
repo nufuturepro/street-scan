@@ -232,6 +232,11 @@ export function buildRqsi(opts: {
 
     return {
       jobId,
+      // One pass, one route: consensus.ts is what turns these into jobIds /
+      // passes / disagree when audits cover the same street.
+      jobIds: [jobId],
+      passes: 1,
+      disagree: false,
       index,
       lat1: e.lat1,
       lon1: e.lon1,

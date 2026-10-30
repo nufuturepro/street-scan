@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify": "tsc scripts/verify-filter.ts scripts/verify-rqsi.ts scripts/verify-overlay.ts --outDir .verify --module commonjs --target es2021 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node .verify/scripts/verify-filter.js && node .verify/scripts/verify-rqsi.js && node .verify/scripts/verify-overlay.js"
+    "verify": "tsc scripts/verify-filter.ts scripts/verify-rqsi.ts scripts/verify-overlay.ts scripts/verify-consensus.ts --outDir .verify --module commonjs --target es2021 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node .verify/scripts/verify-filter.js && node .verify/scripts/verify-rqsi.js && node .verify/scripts/verify-overlay.js && node .verify/scripts/verify-consensus.js"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.22",

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import type { Detection, RouteSegment } from '@/lib/types';
+import type { Detection, HazardGroup, RouteSegment } from '@/lib/types';
 import { GRADE_COLOR, GRADE_LABEL, summarize } from '@/lib/rqsi';
 
 const SEVERITY_COLORS: Record<number, string> = {
@@ -33,6 +33,8 @@ type Props = {
   detections: Detection[];
   /** RQSI segments for the routes currently in view. */
   segments: RouteSegment[];
+  /** Cross-audit hazard groups, so a pin can say a second pass saw it too. */
+  hazards?: HazardGroup[];
   activeId: number | null;
   onSelect: (id: number) => void;
 };
@@ -105,13 +107,17 @@ function MapController({
   return null;
 }
 
-export default function HazardMap({ detections, segments, activeId, onSelect }: Props) {
+export default function HazardMap({ detections, segments, hazards = [], activeId, onSelect }: Props) {
   // Memoised: MapController re-fits on this array's identity, so a filter that
   // rebuilt it every render would snap the map back mid-interaction.
   const located = useMemo(
     () => detections.filter((d) => d.lat != null && d.lon != null),
     [detections]
   );
+  // Deliberately not a useMemo: `hazards` is a fresh array on every 5s poll,
+  // so a memo keyed on it would rebuild every time anyway.
+  const hazardOf = new Map<number, HazardGroup>();
+  for (const g of hazards) for (const id of g.detectionIds) hazardOf.set(id, g);
   const route = summarize(segments);
   const center: [number, number] =
     located.length > 0
@@ -170,11 +176,22 @@ export default function HazardMap({ detections, segments, activeId, onSelect }: 
                 segment {s.index + 1} · density {s.density}/100 m
                 {s.offRoute > 0 ? ` · ${s.offRoute} placed off-track` : ''}
               </div>
+              {s.passes > 1 && (
+                <div style={{ fontSize: 11, marginTop: 4 }}>
+                  <strong>{s.passes} passes</strong> cover this stretch
+                  {s.disagree
+                    ? ' and grade it differently'
+                    : ' and agree on the grade'}
+                  {' · '}jobs {s.jobIds.map((id) => `#${id}`).join(', ')}
+                </div>
+              )}
             </div>
           </Popup>
         </Polyline>
       ))}
-      {located.map((d) => (
+      {located.map((d) => {
+        const group = hazardOf.get(d.id!);
+        return (
         <Marker
           key={d.id}
           position={[d.lat as number, d.lon as number]}
@@ -197,10 +214,24 @@ export default function HazardMap({ detections, segments, activeId, onSelect }: 
                 {d.osmDisagrees ? ' · map disagrees' : ''}
                 {d.needsReview ? ' · needs review' : ''}
               </div>
+              {group && group.passes > 1 && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    marginTop: 4,
+                    color: group.state === 'disputed' ? '#f59e0b' : '#22c55e',
+                  }}
+                >
+                  {group.state === 'disputed'
+                    ? `${group.passes} passes disagree on what this is`
+                    : `seen in ${group.passes} passes`}
+                </div>
+              )}
             </div>
           </Popup>
         </Marker>
-      ))}
+        );
+      })}
     </MapContainer>
       {segments.length > 0 && (
         <div className="pointer-events-none absolute bottom-2 left-2 z-[1000] rounded border border-zinc-700 bg-zinc-950/85 px-2.5 py-2 text-[11px] text-zinc-300">
@@ -222,6 +253,12 @@ export default function HazardMap({ detections, segments, activeId, onSelect }: 
           <div className="mt-1.5 border-t border-zinc-800 pt-1 text-zinc-500">
             {segments.length} segments · {Math.round(route.totalLengthM)} m
           </div>
+          {segments.some((s) => s.passes > 1) && (
+            <div className="mt-1 text-zinc-500">
+              {segments.filter((s) => s.passes > 1).length} shared ·{' '}
+              {segments.filter((s) => s.disagree).length} disagree
+            </div>
+          )}
         </div>
       )}
     </div>

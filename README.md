@@ -18,7 +18,8 @@ original ──exiftool──► GPS samples {t, lat, lon}        (recorded in-c
    [chunker] windows of 3,000 frames with 150 frames of overlap
    [SAM 3.1]  "pothole" → {frameIndex, objectId, polygon}
    [filter]   ≥6 frames AND ≥0.6s → keep · IoU merge across the chunk seam
-   [geo]      interpolate → GPS sample | null → manual pin
+   [geo]      interpolate → GPS sample | null → overlay OCR | manual pin
+   [consensus] across audits → same defect seen twice → corroborated · disputed
    [Spark]    crop + full frame → {hazardType, severity, confidence, streetContext}
    [OSM]      Overpass reverse-geocode → validate the OCR'd street name, disagree → flag
    [Open311]  → SQLite → split-screen inspection UI → dispatch dashboard
@@ -81,10 +82,10 @@ to actually work.
 npx tsc --noEmit          # types
 npm run lint              # lint
 npm run build             # build
-npm run verify            # behaviour: 125 assertions across three verify scripts
+npm run verify            # behaviour: 154 assertions across four verify scripts
 ```
 
-`npm run verify` compiles the three `scripts/verify-*.ts` files to `.verify/`
+`npm run verify` compiles the four `scripts/verify-*.ts` files to `.verify/`
 (gitignored) and runs them in sequence, stopping at the first failure: a failing assertion exits
 non-zero, so the command is safe to wire into CI or a pre-commit hook. Plain
 `node scripts/*.ts` does not work - Node's type stripping does not resolve this project's
@@ -106,6 +107,14 @@ dashcam clip parse to the coordinates the clip shows, OCR damage (an eaten colon
 space) is tolerated, a fused decimal and an out-of-range value are rejected rather than
 believed, and a fix that leaves the route and comes straight back is dropped as a misread
 while a genuine shift is kept.
+
+The consensus script is the contract for what one audit learns from another:
+two passes agreeing on a defect, two passes calling it different things, and -
+the case the whole design turns on - a 10 m chain of detections from one audit
+that must never weld a single drive into one hazard. It also pins the merging
+arithmetic: the worse grade wins, shared metres count once (the same 50 m
+street reads 50 m unmerged 100 m), and two sightings of one pothole are one
+defect.
 
 ## Endpoints
 
