@@ -26,8 +26,28 @@ import type { HazardType } from './types';
  * of the damaged road. Both prompts watch the same frames, and the filter
  * welds their overlaps back together so one hazard is still one work order -
  * see the second pass in mergeAcrossChunks.
+ *
+ * The obstruction battery was probed the same way rather than assumed, with
+ * scripts/probe-prompts.ts on 300-frame slices of two of our own clips (night
+ * Broadway, day Broadway):
+ *
+ *   prompt        night boxes/frames      day boxes/frames
+ *   car           1078  300/300           337  293/300
+ *   parked car     730  261/300             0    0/300
+ *   van            245  245/300             0    0/300
+ *   truck            0    0/300             8    8/300
+ *   barrel           0    0/300             0    0/300
+ *   pallet           0    0/300             0    0/300
+ *
+ * Two things came out of it. 'barrel' and 'pallet' return nothing on either
+ * clip, and - the part that decided the list - every frame the narrower words
+ * found was ALREADY found by 'car': 0 unique frames out of 261, 245 and 8.
+ * 'parked car' and 'van' do box real vehicles (verified by cropping what they
+ * matched), but a second request per chunk that adds no new footage is pure
+ * cost, so the obstruction prompt is 'car' alone. Widening has to be measured;
+ * here measurement narrowed it.
  */
-export const SAM_PROMPTS = ['pothole', 'crack'] as const;
+export const SAM_PROMPTS = ['pothole', 'crack', 'car'] as const;
 
 /** Single-prompt form, for callers that want exactly one request. */
 export const SAM_PROMPT = SAM_PROMPTS[0];

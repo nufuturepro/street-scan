@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Compiled output of `npm run verify` - commonjs require() calls by design.
     ".verify/**",
+    // Same, for scripts/probe-prompts.ts, which is compiled by hand.
+    ".probe/**",
   ]),
 ]);
 

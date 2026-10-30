@@ -38,10 +38,14 @@ export function buildClassificationPrompt(): string {
     'If a sign is not clearly legible, return null for that field - do not guess.',
     '',
     'confidence is your honest probability that the hazard TYPE is correct (0 to 1).',
+    '',    'Set onRoadway to true when the patch is in the travel way: the roadway surface,',
+    'a bike lane, a bus lane, a crosswalk, or a vehicle or object occupying those spaces.',
+    'A vehicle, barrier or debris blocking a travel lane or bike lane IS on roadway - the',
+    'blockage is the hazard.',
     '',
-    'Set onRoadway to true ONLY when the patch is on the roadway surface itself.',
-    'Return false when it sits on a sidewalk, curb, driveway, parking strip, building, ' +
-    'wall or parked vehicle. Those are not roadway hazards and must not be reported.',
+    'Return false when it sits on a sidewalk, building, wall, yard or driveway, or on a',
+    'vehicle parked clear of the travel way at the curb or in a parking lane. Those are not',
+    'roadway hazards and must not be reported.',
     '',
     'Return JSON only, with exactly these keys:',
     JSON.stringify({

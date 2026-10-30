@@ -109,6 +109,14 @@ space) is tolerated, a fused decimal and an out-of-range value are rejected rath
 believed, and a fix that leaves the route and comes straight back is dropped as a misread
 while a genuine shift is kept.
 
+`scripts/probe-prompts.ts` is separate from the suite: it spends real money
+asking SAM whether a candidate prompt finds anything, so it is run by hand. It
+tests one sliced chunk per candidate, prints boxes and frames-hit, reports which
+frames each prompt found that the control missed, and crops the largest box it
+matched to a PNG - because "260 boxes" never says whether those boxes are cars
+or tree trunks. That probe is why the prompt list is `pothole, crack, car` and
+not the six-word obstruction battery first proposed.
+
 The consensus script is the contract for what one audit learns from another:
 two passes agreeing on a defect, two passes calling it different things, and -
 the case the whole design turns on - a 10 m chain of detections from one audit
