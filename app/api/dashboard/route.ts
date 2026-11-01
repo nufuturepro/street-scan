@@ -1,6 +1,8 @@
 import { listJobs, listAllDetections, readGps } from '@/lib/repo';
 import { buildRqsi } from '@/lib/rqsi';
 import { groupHazards, mergeSegments } from '@/lib/consensus';
+import { clientMode } from '@/lib/config';
+import { activeJobs } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,5 +37,15 @@ export async function GET() {
   // A street driven twice is graded once, at the worse of the two readings.
   const segments = mergeSegments(perJob, hazards);
 
-  return Response.json({ jobs, detections, segments, hazards });
+  // mode rides along so the export rows can say when a cost figure is what a
+  // run *would* have cost rather than what it was billed - fixtures bill $0.
+  // active is the scan queue's live snapshot - what the Scanning strip draws.
+  return Response.json({
+    jobs,
+    detections,
+    segments,
+    hazards,
+    mode: clientMode(),
+    active: activeJobs(),
+  });
 }

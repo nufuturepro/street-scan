@@ -61,6 +61,13 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
   const outDir = storageDir('jobs', String(jobId));
   const report = (p: Progress) => onProgress(p);
 
+  // The tally is per-process and cumulative - resetTally() has no callers, so
+  // a second run in the same container also sees what the first one spent.
+  // What a job records has to be what THIS run cost, because that number is
+  // what the dashboard quotes per audit: take a reading now, store the
+  // difference when the run finishes.
+  const before = costTally();
+
   try {
     /* ---- 1. transcode (once) ---- */
     let analysisPath = job.analysisPath;
@@ -69,6 +76,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
 
     if (!analysisPath || !frames) {
       if (!job.footagePath) throw new Error('job has no footage attached');
+      updateJob(jobId, { status: 'transcoding' });
       report({ stage: 'transcoding', done: 0, total: 2, message: 'cutting analysis + playback files' });
       const res = await transcode(job.footagePath, outDir, (pct) =>
         report({
@@ -123,6 +131,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
     }
 
     /* ---- 3. SAM 3.1 over overlapping windows ---- */
+    updateJob(jobId, { status: 'segmenting' });
     const client = await getMetaClient();
     report({ stage: 'segmenting', done: 0, total: frames, message: 'requesting masks', clientMode: client.mode });
     const seg = await runSegmentation({
@@ -163,6 +172,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
 
     // A re-run replaces this job's results instead of appending a second set.
     deleteDetections(jobId);
+    updateJob(jobId, { status: 'enriching' });
 
     for (const track of tracks) {
       const result = await classifyTrack({
@@ -210,9 +220,10 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
     const promoted = promoteVerified(corroborated);
 
     const cost = costTally();
+    const spent = Number((cost.totalUsd - before.totalUsd).toFixed(4));
     updateJob(jobId, {
       status: 'ready',
-      cost_estimate: Number(cost.totalUsd.toFixed(4)),
+      cost_estimate: spent,
       error: null,
     });
 
@@ -222,7 +233,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
       total: tracks.length,
       message:
         `${listDetections(jobId).length} detections from ${seg.chunks} chunks ` +
-        `· ${cost.totalUsd.toFixed(3)} · mode: ${seg.clientMode}` +
+        `· ${spent.toFixed(3)} · mode: ${seg.clientMode}` +
         (promoted ? ` · ${promoted} verified by a second pass` : '') +
         (seg.notice ? ` · ${seg.notice}` : ''),
       clientMode: seg.clientMode,

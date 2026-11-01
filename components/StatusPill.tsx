@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 type Status = {
   mode: string;
@@ -70,9 +71,13 @@ export default function StatusPill() {
         <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-emerald-400' : 'bg-amber-400 pulse-soft'}`} />
         {live ? 'live API' : 'fixtures'}
       </span>
-      <span className="hidden sm:inline text-zinc-500 tabular-nums">
-        ${(status.cost.usd).toFixed(3)} / ${status.cost.creditUsd}
-      </span>
+      <Link
+        href="/costs"
+        className="hidden sm:inline text-zinc-500 tabular-nums hover:text-amber-400"
+        title="expense breakdown — what each audit cost"
+      >
+        ${(status.cost.usd).toFixed(3)} / ${status.cost.creditUsd} →
+      </Link>
       {!live && status.billing.blocked && status.billing.url && (
         <a
           href={status.billing.url}

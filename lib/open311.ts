@@ -63,13 +63,16 @@ export function buildWorkOrder(d: Detection, profileName?: string): Open311Reque
   const priority = profile.codes[d.hazardType]?.priority ?? spec.priority;
   const label = profile.codes[d.hazardType]?.description ?? spec.label;
 
+  const onSidewalk = d.surface === 'sidewalk';
   return {
     service_code: code,
     lat: d.lat,
     lon: d.lon,
     address_string: buildAddress(d),
     description:
-      `${label}. Severity ${d.severity}/5, confidence ${(d.confidence * 100).toFixed(0)}%. ` +
+      // A sidewalk finding must not read like a street defect in a dispatch
+      // queue - the prefix is what a human triaging the ticket sees first.
+      `${onSidewalk ? 'Sidewalk: ' : ''}${label}. Severity ${d.severity}/5, confidence ${(d.confidence * 100).toFixed(0)}%. ` +
       `${d.description}`,
     first_name: 'StreetScan',
     last_name: 'Audit',
@@ -78,6 +81,7 @@ export function buildWorkOrder(d: Detection, profileName?: string): Open311Reque
     account_id: '',
     metadata: {
       hazard_type: d.hazardType,
+      surface: d.surface,
       severity: d.severity,
       confidence: Number(d.confidence.toFixed(3)),
       priority,
@@ -108,6 +112,7 @@ export function toGeoJson(detections: Detection[]): string {
         properties: {
           id: d.id,
           hazard_type: d.hazardType,
+          surface: d.surface,
           severity: d.severity,
           confidence: Number(d.confidence.toFixed(3)),
           street: d.street,
@@ -129,6 +134,7 @@ export function toGeoJson(detections: Detection[]): string {
 const CSV_COLUMNS = [
   'id',
   'hazard_type',
+  'surface',
   'severity',
   'confidence',
   'lat',
@@ -154,6 +160,7 @@ export function toCsv(detections: Detection[]): string {
     [
       d.id,
       d.hazardType,
+      d.surface,
       d.severity,
       d.confidence.toFixed(3),
       d.lat,

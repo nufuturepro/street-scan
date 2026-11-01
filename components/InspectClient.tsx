@@ -5,25 +5,25 @@ import Link from 'next/link';
 import VideoPane from './VideoPane';
 import DetectionList from './DetectionList';
 import WorkOrderPanel from './WorkOrderPanel';
-import type { Detection, Job } from '@/lib/types';
-
-type Progress = {
-  stage: string;
-  done: number;
-  total: number;
-  message: string;
-  clientMode?: string;
-};
+import CostMeter from './CostMeter';
+import type { Detection, Job, JobProgress } from '@/lib/types';
 
 type JobResponse = {
   job: Job;
   detections: Detection[];
   counts: Record<string, number>;
   gps: { source: string; samples: number };
+  /** metres of street this audit's own GPS track covers; null without a track */
+  distanceM?: number | null;
+  /** configured client mode - 'fixture' means the figures are simulated */
+  mode?: string;
   cost: { frames: number; usd: number };
+  /** live queue snapshot; null when nothing is running for this job */
+  progress: JobProgress | null;
 };
 
 const STAGE_LABEL: Record<string, string> = {
+  queued: 'Queued',
   transcoding: 'Transcoding',
   gps: 'Reading GPS',
   segmenting: 'SAM 3.1 segmenting',
@@ -33,12 +33,22 @@ const STAGE_LABEL: Record<string, string> = {
   failed: 'Failed',
 };
 
+/** Statuses where the queue is still working on this job - poll fast. */
+const IN_FLIGHT = new Set(['queued', 'transcoding', 'transcoded', 'segmenting', 'enriching']);
+
 export default function InspectClient({ id }: { id: number }) {
   const [data, setData] = useState<JobResponse | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
-  const startedRef = useRef(false);
+  // Bumped on every selection so asking for the hazard that is already on
+  // screen seeks to it again - see VideoPane for why activeId alone is not
+  // enough for that.
+  const [seekToken, setSeekToken] = useState(0);
+  const select = (id: number) => {
+    setActiveId(id);
+    setSeekToken((t) => t + 1);
+  };
+  const enqueuedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -50,49 +60,18 @@ export default function InspectClient({ id }: { id: number }) {
     }
   }, [id]);
 
-  const run = useCallback(async () => {
+  /** Ask the queue to run this job. Idempotent server-side. */
+  const enqueue = useCallback(async () => {
     setError(null);
-    setProgress({ stage: 'transcoding', done: 0, total: 1, message: 'starting' });
     try {
       const res = await fetch(`/api/jobs/${id}/process`, { method: 'POST' });
-      if (!res.ok || !res.body) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? `process failed (${res.status})`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      const handle = (raw: string) => {
-        const line = raw.trim();
-        if (!line.startsWith('data:')) return;
-        const json = line.slice(5).trim();
-        if (!json) return;
-        try {
-          const p = JSON.parse(json) as Progress;
-          setProgress(p);
-          if (p.stage === 'failed') setError(p.message);
-          if (p.stage === 'transcoding' || p.stage === 'classifying' || p.stage === 'done') {
-            void refresh();
-          }
-        } catch {
-          /* ignore malformed frame */
-        }
-      };
-
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() ?? '';
-        for (const part of parts) handle(part);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `could not queue this scan (${res.status})`);
       }
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setProgress(null);
     }
   }, [id, refresh]);
 
@@ -102,15 +81,38 @@ export default function InspectClient({ id }: { id: number }) {
     return () => clearTimeout(t);
   }, [refresh]);
 
+  // This page used to *own* the run through an SSE stream - close the tab and
+  // the job's progress vanished with it. The queue owns runs now, so viewing
+  // only enqueues: legacy jobs sitting at 'ingested' (uploaded before the
+  // queue existed) still start when someone opens them.
   useEffect(() => {
-    if (!data || startedRef.current) return;
-    const st = data.job.status;
-    if (st === 'ready' || st === 'failed') return;
-    if (!data.job.footagePath) return;
-    startedRef.current = true;
-    const t = setTimeout(() => void run(), 0);
+    if (!data || enqueuedRef.current) return;
+    if (data.job.status !== 'ingested' || !data.job.footagePath) return;
+    enqueuedRef.current = true;
+    const t = setTimeout(() => void enqueue(), 0);
     return () => clearTimeout(t);
-  }, [data, run]);
+  }, [data, enqueue]);
+
+  const progress = data?.progress ?? null;
+
+  // Fast polls while the queue works, slow ones when this job is idle - a
+  // finished audit does not need a request every 1.5 seconds.
+  const inFlight =
+    progress != null || (data != null && IN_FLIGHT.has(data.job.status));
+  useEffect(() => {
+    const t = setInterval(() => void refresh(), inFlight ? 1500 : 8000);
+    return () => clearInterval(t);
+  }, [inFlight, refresh]);
+
+  // A failed run reports from the job row, so the message survives a reload -
+  // it used to live only in the SSE stream. Derived during render rather than
+  // copied into state: the row is already the source of truth, and a state
+  // copy would go stale against it.
+  const jobError =
+    data?.job.status === 'failed'
+      ? (data.job.error ?? 'This scan failed.')
+      : null;
+  const displayError = error ?? jobError;
 
   const setStatus = async (
     detectionId: number,
@@ -122,7 +124,7 @@ export default function InspectClient({ id }: { id: number }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, ...patch }),
     }).catch(() => undefined);
-    setActiveId(detectionId);
+    select(detectionId);
     await refresh();
   };
 
@@ -140,7 +142,8 @@ export default function InspectClient({ id }: { id: number }) {
 
   const detections = data?.detections ?? [];
   const active = detections.find((d) => d.id === activeId) ?? null;
-  const running = progress != null && progress.stage !== 'done' && progress.stage !== 'failed';
+  const running =
+    progress != null && progress.stage !== 'done' && progress.stage !== 'failed';
   const playback = data?.job.playbackPath ? `/api/files/${id}/playback.mp4` : null;
 
   const counts = data?.counts ?? { detected: 0, verified: 0, filed: 0 };
@@ -166,11 +169,6 @@ export default function InspectClient({ id }: { id: number }) {
           )}
           <span className="text-zinc-500">
             GPS: {data ? (data.gps.samples ? `${data.gps.samples} fixes` : 'none') : '—'}
-          </span>
-          <span className="text-zinc-500 tabular-nums">
-            {/* What this audit actually cost, persisted on the job. The process
-                tally resets on every restart and would read $0.000 afterwards. */}
-            {data ? `${(data.job.costEstimateUsd || data.cost.usd).toFixed(3)}` : ''}
           </span>
         </div>
       </div>
@@ -200,13 +198,13 @@ export default function InspectClient({ id }: { id: number }) {
         </div>
       )}
 
-      {error && (
+      {displayError && (
         <div className="mb-5 rounded-lg border border-red-800 bg-red-950/60 px-4 py-3 text-sm text-red-300">
-          {error}
+          {displayError}
           <button
             onClick={() => {
-              startedRef.current = false;
-              void run();
+              enqueuedRef.current = true;
+              void enqueue();
             }}
             className="ml-3 rounded border border-red-700 px-2 py-0.5 text-xs hover:bg-red-900"
           >
@@ -215,13 +213,14 @@ export default function InspectClient({ id }: { id: number }) {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
         <section>
           <VideoPane
             src={playback}
             detections={detections}
             activeId={activeId}
-            onSelect={setActiveId}
+            seekToken={seekToken}
+            onSelect={select}
           />
           <div className="mt-5">
             <WorkOrderPanel key={active?.id ?? 'none'} detection={active} onPatch={patch} />
@@ -229,13 +228,25 @@ export default function InspectClient({ id }: { id: number }) {
         </section>
 
         <aside className="lg:max-h-[75vh] lg:overflow-y-auto lg:pr-1">
+          {data && (
+            <div className="mb-4">
+              <CostMeter
+                frames={data.job.frames}
+                analysisFps={data.job.analysisFps}
+                billedUsd={data.job.costEstimateUsd}
+                distanceM={data.distanceM}
+                simulated={data.mode === 'fixture'}
+                jobId={data.job.id}
+              />
+            </div>
+          )}
           <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
             Detections
           </h2>
           <DetectionList
             detections={detections}
             activeId={activeId}
-            onSelect={setActiveId}
+            onSelect={select}
             onStatus={(detectionId, status) => setStatus(detectionId, status)}
           />
         </aside>

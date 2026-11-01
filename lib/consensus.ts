@@ -80,6 +80,9 @@ export function groupHazards(
       for (let dc = -1; dc <= 1; dc++) {
         for (const draft of cells.get(`${row + dr}:${col + dc}`) ?? []) {
           if (draft.detections.some((x) => x.jobId === d.jobId)) continue;
+          // A sidewalk crack and a street crack 5 m apart are two different
+          // physical defects; corroboration claims the same thing seen twice.
+          if (draft.detections[0].surface !== d.surface) continue;
           const dist = haversineM(draft.anchor, point);
           if (dist <= radiusM && dist < bestDist) {
             best = draft;

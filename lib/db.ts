@@ -76,6 +76,17 @@ function open(): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS idx_work_orders_detection ON work_orders(detection_id);
   `);
+
+  // Sidewalk findings used to be discarded at classification; now they are
+  // kept and labelled. Guarded because ALTER TABLE has no IF NOT EXISTS -
+  // every pre-existing row defaults to 'roadway', which is honest: the only
+  // sidewalk patches that ever reached the table were written after this
+  // column existed.
+  try {
+    db.exec(`ALTER TABLE detections ADD COLUMN surface TEXT NOT NULL DEFAULT 'roadway'`);
+  } catch {
+    /* column already there */
+  }
   return db;
 }
 

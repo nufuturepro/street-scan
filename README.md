@@ -26,6 +26,117 @@ original ──exiftool──► GPS samples {t, lat, lon}        (recorded in-c
    [Open311]  → SQLite → split-screen inspection UI → dispatch dashboard
 ```
 
+## Functions
+
+What the app does, function by function - the operator's view. Each one says where it lives.
+
+### 1. Ingest footage - `/`
+
+- Drag a clip in (or click to choose): MP4/MOV/M4V, streamed raw rather than multipart, so a
+  10-minute 4K upload never buffers in memory and the progress bar is real.
+- Optionally attach the **original** recording as the GPS source - a second upload
+  (`?role=gps`) whose track is read with exiftool. A flattened export carries no GPS at all;
+  if the attach fails the job still opens, because no GPS is a manual pin, not a dead job.
+- **The scan starts on upload, in the background** - the page stays put and the audit list
+  shows the new job's status. Drop three clips and all three work; a staged GPS source holds
+  the start until that upload lands, so the pipeline never reads GPS off a half-written file.
+
+### 2. Run an audit - the scan queue (`lib/queue.ts`)
+
+- Uploads enqueue automatically; up to `SCAN_CONCURRENCY` (2) run at once, the rest wait in
+  FIFO order. The **Scanning** strip on `/dashboard` shows every running and queued job with
+  its stage and progress - no page needs to stay open on any of them.
+- `/inspect/:id` polls the same queue snapshot instead of owning the run: stage bar,
+  `queued - position 2`, and **Retry** on failure. Opening a legacy job that predates the
+  queue starts it, as before.
+- A server restart never resumes a run silently (that would re-bill unwatched): interrupted
+  jobs are marked `failed - interrupted by a server restart` and wait for a human.
+- Nothing is configured per run: prompts, persistence thresholds and the taxonomy
+  (`pothole, cave_in, crack, blocked_lane, debris`) live in
+  [`lib/taxonomy.ts`](lib/taxonomy.ts) and [`lib/config.ts`](lib/config.ts).
+
+### 3. Triage in the queue - `/dashboard`
+
+- Filter by audit, type, **surface** (everywhere / street only / sidewalk), severity ≥, status
+  or `needs review`; the header counts `57 of 57 hazards`, so a filter that hides half the
+  street says so.
+- Every row carries a severity badge, **the frame the hazard was found on**, its street, a
+  corroboration badge (`2 passes`, or `disputed` when a second audit saw the same spot and
+  disagreed), and a status pill you click to advance `detected → verified → filed`.
+- Sidewalk findings wear a `walk` chip and the breakdown splits `18 street - 4 on sidewalk`:
+  kept, visible, never passed off as street defects.
+- The breakdown counts hazards by type and calls out how many are still waiting on a GPS fix.
+
+### 4. Hover a row - the still popup
+
+- Shows that frame with SAM's polygon painted over it, plus hazard, severity and confidence,
+  and a **Review video →** button that opens the footage at that hazard's timestamp.
+- Images come from `GET /api/detections/:id/still` - one ffmpeg cut per detection, cached on
+  the server, never a model call.
+
+### 5. Review footage in place
+
+- Clicking a row opens the footage **in the map's slot**, so the queue stays exactly where it
+  is and nothing scrolls.
+- The video jumps to that hazard's second, and its mask stays painted for ~2.6s around the
+  sample frame. The timeline below carries one severity-coloured tick per hazard - click to
+  jump.
+- Beside it sits the live Open311 payload: correct the latitude, longitude or street, then
+  **Apply corrections** writes it back and **Copy JSON** takes it elsewhere. **full page ↗**
+  opens the dedicated inspect view; **✕ Close** hands the slot back to the map.
+
+### 6. Read the street - the map
+
+- Detection pins are coloured by severity; **sidewalk findings are hollow with a blue ring**,
+  and their popup says `on sidewalk - not in the roadway grade`. Clicking one selects the
+  matching row in the queue. Where the map's own street name disagrees with the one read
+  from the frame, the pin says so instead of picking a winner.
+- **RQSI segments** run under the pins as green/amber/red polylines, one per ~100m of driven
+  route, each with a popup: grade, score, length, defect count, worst severity and how many
+  passes cover it.
+- The route-quality legend sits on the map, and the view does not snap back to fit on every
+  poll - the zoom you chose is the zoom you keep.
+
+### 7. Grade the route (RQSI)
+
+- Every **street** detection is snapped to a 100m window of the GPS track: density
+  (severity-weighted defects per 100m) becomes `RQSI = 100 − density × K`, then a rubric
+  grade - **red** for any severity ≥ 4 or a blocked-lane/cave-in ≥ 3, **yellow** for
+  severity ≥ 2 or cracking, **green** when clean. Sidewalk findings are graded apart: a
+  sidewalk defect must not redden a driving segment no tyre touched.
+- The **Route quality** card shows the length-weighted score, `smooth / caution / hazardous`
+  segment counts and the worst segment. Grades use every detection in the audit, not just the
+  filtered view.
+
+### 8. Let passes correct each other
+
+- Two audits that saw the same defect → **corroborated**, and that pair is promoted to
+  `verified` on its own; two that disagree on what it is → **disputed**, which waits for a
+  human.
+- Street names are canonicalised across passes (`Hart St` ≡ `Hart Street`) so an Open311
+  export never carries both spellings, while a genuine disagreement (`Stuyvesant Ave` against
+  the map's `Broadway`) is flagged rather than silently renamed.
+
+### 9. Export, and watch the cost
+
+- Per audit: `csv` for a spreadsheet, `geojson` for a GIS, `rqsi` for the graded segments as
+  LineStrings, `open311` for the assembled payloads. They are **assembled, never POSTed** -
+  filing needs a jurisdiction account and that city's real service codes.
+- Every export row carries **what that audit cost**, and `/inspect/:id` shows the meter behind
+  that figure: ffmpeg $0.00, SAM off the frame count, Muse Spark as the residual, then the
+  total and **$/km** over the metres this run drove. A run served from fixtures is tagged
+  `simulated`, so a projected number is never mistaken for a charge.
+- The arithmetic lives in [`lib/cost.ts`](lib/cost.ts) and reads only figures the pipeline
+  already records - frames, the bill written when a run finishes, the GPS track - so the
+  meter, the export pills and the header pill cannot disagree with each other.
+- The header pill reports live-vs-fixtures and spend against the $150 credit. SAM bills
+  $0.20 per 1,000 frames, which is why the pipeline analyses a separate 10fps copy.
+- **Every amount links to `/costs`** - the expense ledger: per-audit SAM/Spark/total/$-per-km
+  rows, the credit bar, the rate card, and what "Spark is a residual" means. Export pills
+  deep-link to their own row (`/costs#job-7`).
+- CSV, GeoJSON and Open311 all carry a `surface` column (`roadway`/`sidewalk`), and a
+  sidewalk work order is prefixed `Sidewalk:` so it cannot be misfiled as a street defect.
+
 ## The one architectural claim
 
 **SAM detects generically; Muse Spark classifies specifically.**
@@ -56,21 +167,24 @@ A clip whose GPS is burned into the picture instead of tracked needs `tesseract.
 fetches its English language data once (needs the network that one time) and caches it in
 `storage/tesseract/`, a mounted volume, so no container restart refetches it.
 
-## ⚠️ Billing status: running on fixtures
+## Billing status: live
 
-Your Meta Model API key currently returns:
+`GET /api/status` reports `mode: live`, `billing.blocked: false`, and real spend against the
+$150 credit - exactly what the header pill shows.
+
+`META_API_MODE` decides which path runs: `live` forces real calls, `fixture` forces recorded
+ones, and `auto` (the default) probes the key once at startup. Should billing ever lapse
+again, the key answers:
 
 ```json
 {"code":"billing_not_configured","message":"To use this API key, your team needs to
 resolve a billing issue first."}
 ```
 
-So `META_API_MODE=auto` (the default) probes once, detects the 402, and serves
-**deterministic recorded responses** instead. The header pill shows `fixtures` — it is never
-hidden, because a judge who assumes the masks are live when they are not has been misled.
-
-Fix it at https://dev.meta.ai/billing/?team_id=2138064107073975 and restart. The same code
-path then goes live with no edits: set `META_API_MODE=live` to force it, `fixture` to stay off.
+and `auto` serves **deterministic recorded responses** instead of failing the run. The pill
+then shows `fixtures` - never hidden, because a judge who assumes the masks are live when
+they are not has been misled. With billing resolved the same code path goes live with no
+edits: set `META_API_MODE=live` to force it, `fixture` to stay off.
 
 The fixtures are deliberately adversarial — persistent hazards that must survive the filter,
 2–4 frame flickers that must die, and **object IDs that differ in each overlapping chunk**
@@ -140,7 +254,8 @@ and only a corroborated pair - never a disputed one - earns a verification.
 | `POST /api/jobs/:id/process` | runs the pipeline, streams SSE progress |
 | `GET /api/jobs/:id` | job + detections + counts + GPS + cost |
 | `PATCH /api/detections/:id` | the human verification step: status, manual pin, street correction |
-| `GET /api/jobs/:id/export?format=` | `csv` · `geojson` · `open311` |
+| `GET /api/detections/:id/still` | the frame a hazard was found on - cut from playback on first request, then cached |
+| `GET /api/jobs/:id/export?format=` | `csv` · `geojson` · `open311` · `rqsi` |
 | `GET /api/files/:id/:name` | Range-aware video streaming (206) so scrubbing works |
 | `GET /api/status` | live-vs-fixture, billing state, spend against the $150 credit |
 

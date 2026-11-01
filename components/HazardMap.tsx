@@ -14,15 +14,21 @@ const SEVERITY_COLORS: Record<number, string> = {
   5: '#ef4444',
 };
 
-function pin(severity: number, active: boolean): L.DivIcon {
+function pin(severity: number, active: boolean, surface?: string): L.DivIcon {
   const color = SEVERITY_COLORS[severity] ?? '#f59e0b';
   const size = active ? 22 : 16;
+  // Sidewalk findings are hollow with a blue ring: same severity ramp inside,
+  // unmistakably not a street defect from across the room. A judge who saw
+  // SAM paint a pothole on a sidewalk once should never be fooled again.
+  const sidewalk = surface === 'sidewalk';
+  const ring = sidewalk ? '#38bdf8' : color;
+  const fill = sidewalk ? '#0c4a6e' : color;
   return L.divIcon({
     className: '',
     html: `<div style="
       width:${size}px;height:${size}px;border-radius:9999px;
-      background:${color};border:2px solid #09090b;
-      box-shadow:0 0 0 ${active ? 3 : 1}px ${color}55;
+      background:${fill};border:2px solid ${ring};
+      box-shadow:0 0 0 ${active ? 3 : 1}px ${ring}55;
     "></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -37,6 +43,11 @@ type Props = {
   hazards?: HazardGroup[];
   activeId: number | null;
   onSelect: (id: number) => void;
+  /**
+   * False while the dashboard shows footage in this slot instead. Leaflet
+   * cannot see a display:none container, so it needs telling when it is back.
+   */
+  visible?: boolean;
 };
 
 /** Where the map sits before any detection has a fix - a neutral world view. */
@@ -53,10 +64,12 @@ function MapController({
   located,
   segments,
   activeId,
+  visible,
 }: {
   located: Detection[];
   segments: RouteSegment[];
   activeId: number | null;
+  visible: boolean;
 }) {
   const map = useMap();
 
@@ -71,6 +84,18 @@ function MapController({
     locatedRef.current = located;
     segmentsRef.current = segments;
   }, [located, segments]);
+
+  // Swapping this pane for the footage panel hides it with display:none, which
+  // leaves Leaflet holding a 0x0 container: come back and the tiles are laid
+  // out for a box that no longer exists and clicks land off-target.
+  // invalidateSize re-measures without touching center or zoom, so the view
+  // you left is the view you return to - the fit() below is keyed on content,
+  // not on visibility, so it does not re-run here.
+  useEffect(() => {
+    if (!visible) return;
+    const t = setTimeout(() => map.invalidateSize(), 60);
+    return () => clearTimeout(t);
+  }, [map, visible]);
 
   // Segments get a fresh object identity on every poll while their content
   // stays identical, so the signature comes from what identifies a route: which
@@ -107,7 +132,7 @@ function MapController({
   return null;
 }
 
-export default function HazardMap({ detections, segments, hazards = [], activeId, onSelect }: Props) {
+export default function HazardMap({ detections, segments, hazards = [], activeId, onSelect, visible = true }: Props) {
   // Memoised: MapController re-fits on this array's identity, so a filter that
   // rebuilt it every render would snap the map back mid-interaction.
   const located = useMemo(
@@ -159,7 +184,7 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
         maxNativeZoom={16}
         url="https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
       />
-      <MapController located={located} segments={segments} activeId={activeId} />
+      <MapController located={located} segments={segments} activeId={activeId} visible={visible} />
       {segments.map((s) => (
         <Polyline
           key={`${s.jobId}:${s.index}`}
@@ -209,7 +234,7 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
         <Marker
           key={d.id}
           position={[d.lat as number, d.lon as number]}
-          icon={pin(d.severity, d.id === activeId)}
+          icon={pin(d.severity, d.id === activeId, d.surface)}
           eventHandlers={{ click: () => onSelect(d.id!) }}
         >
           <Popup>
@@ -217,6 +242,11 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
               <strong className="capitalize">
                 {d.hazardType.replace('_', '-')} · severity {d.severity}
               </strong>
+              {d.surface === 'sidewalk' && (
+                <div style={{ fontSize: 12, color: '#38bdf8' }}>
+                  on sidewalk — not in the roadway grade
+                </div>
+              )}
               <div style={{ fontSize: 12, marginTop: 4 }}>
                 {[d.street, d.crossStreet].filter(Boolean).join(' @ ') || 'street unknown'}
               </div>

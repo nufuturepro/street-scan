@@ -130,11 +130,29 @@ export const SEGMENT_OFF_ROUTE_M = 60;
  */
 export const RQSI_DENSITY_K = 4;
 
+/**
+ * How many audits may scan at once (lib/queue.ts).
+ *
+ * Two is deliberate rather than generous: transcode is CPU-bound ffmpeg and
+ * SAM calls are long-lived network requests, so a third simultaneous job
+ * slows the two already running without finishing sooner overall. If Meta
+ * rate-limits live mode, this is the one number to lower.
+ */
+export const SCAN_CONCURRENCY = 2;
+
 /** SAM pricing: USD per 1,000 video frames. */
 export const SAM_USD_PER_1000_FRAMES = 0.2;
 
 /** SAM billing floor per request. */
 export const SAM_MIN_BILLED_FRAMES = 50;
+
+/**
+ * Muse Spark pricing: USD per 1M tokens - dev.meta.ai/docs/pricing-rate-limits.
+ * These live next to SAM's rate so the cost ledger, the spend pill and the
+ * meter all quote the same numbers from one place.
+ */
+export const SPARK_USD_PER_1M_IN = 1.25;
+export const SPARK_USD_PER_1M_OUT = 4.25;
 
 /** API base. Public, not a secret. */
 export const META_API_BASE = process.env.NEXT_PUBLIC_META_API_BASE ?? 'https://api.meta.ai/v1';

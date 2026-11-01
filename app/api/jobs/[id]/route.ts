@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getJob, listDetections, detectionCounts, readGps, updateJob, deleteJob } from '@/lib/repo';
 import { costTally } from '@/lib/meta';
+import { clientMode } from '@/lib/config';
+import { haversineM } from '@/lib/rqsi';
+import { progressOf } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +16,26 @@ export async function GET(_req: Request, ctx: Ctx) {
   if (!job) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   const gps = readGps(jobId);
+
+  // Distance is arithmetic over samples already read for the count above - no
+  // extra query and no stored column - and it is what turns the meter's total
+  // into a per-kilometre figure. Below two fixes there is no track to measure.
+  let distanceM = 0;
+  for (let i = 1; i < gps.samples.length; i++) {
+    distanceM += haversineM(gps.samples[i - 1], gps.samples[i]);
+  }
+
   return NextResponse.json({
     job,
     detections: listDetections(jobId),
     counts: detectionCounts(jobId),
     gps: { source: gps.source, samples: gps.samples.length },
+    distanceM: distanceM > 0 ? Number(distanceM.toFixed(1)) : null,
+    mode: clientMode(),
     cost: costTally(),
+    // Live queue snapshot: null once the job is idle. This is what the audit
+    // page polls instead of holding an SSE stream of its own.
+    progress: progressOf(jobId),
   });
 }
 

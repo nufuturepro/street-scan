@@ -70,6 +70,7 @@ type DetOpts = {
   type?: HazardType;
   severity?: 1 | 2 | 3 | 4 | 5;
   confidence?: number;
+  surface?: 'roadway' | 'sidewalk';
 };
 
 function det(opts: DetOpts): Detection {
@@ -94,6 +95,7 @@ function det(opts: DetOpts): Detection {
     osmDisagrees: false,
     serviceCode: 'TEST',
     priority: 'P3',
+    surface: opts.surface ?? 'roadway',
   };
 }
 
@@ -135,6 +137,27 @@ const apart = groupHazards([
   det({ id: 2, jobId: 6, east: CONSENSUS_RADIUS_M + 20 }),
 ]);
 assert(apart.length === 2, `past the radius stays separate - got ${apart.length}`);
+
+// A sidewalk crack and a street crack 5 m apart are two different physical
+// defects; corroboration claims the same thing was seen twice.
+const surfaces = groupHazards([
+  det({ id: 1, jobId: 4, east: 0, type: 'crack', surface: 'roadway' }),
+  det({ id: 2, jobId: 6, east: 5, type: 'crack', surface: 'sidewalk' }),
+]);
+assert(surfaces.length === 2, `roadway and sidewalk never group - got ${surfaces.length}`);
+assert(
+  surfaces.every((g) => g.state === 'single'),
+  'an unmatched sighting stays single'
+);
+
+const sameSidewalk = groupHazards([
+  det({ id: 1, jobId: 4, east: 0, type: 'crack', surface: 'sidewalk' }),
+  det({ id: 2, jobId: 6, east: 8, type: 'crack', surface: 'sidewalk' }),
+]);
+assert(
+  sameSidewalk.length === 1 && sameSidewalk[0].state === 'corroborated',
+  `two passes on the same sidewalk defect still corroborate - got ${sameSidewalk.length}/${sameSidewalk[0]?.state}`
+);
 
 const noCoord = groupHazards([
   det({ id: 1, jobId: 4, east: 0 }),

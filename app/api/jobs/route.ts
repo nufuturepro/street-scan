@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { NextResponse } from 'next/server';
 import { storageDir } from '@/lib/db';
 import { createJob, getJob, listJobs, updateJob } from '@/lib/repo';
+import { enqueue, progressOf } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,12 @@ function safeExt(raw: string | null): string {
  *   POST?id=N&role=gps  -> the original recording, kept only for its GPS track.
  *                          The flattened export measures 0 GPS tags vs
  *                          701 in the source, so the two must travel apart.
+ *
+ * Both enqueue the scan when they finish. The footage call honours
+ * `autostart=0`, which the uploader sends when a GPS source is still to come:
+ * starting the pipeline before that second upload lands would make it read
+ * GPS from the flattened file and find none. The GPS call enqueues on either
+ * outcome - a failed GPS attach degrades to a manual pin, not a stuck job.
  */
 export async function POST(request: Request) {
   const url = new URL(request.url);
@@ -56,24 +63,30 @@ export async function POST(request: Request) {
     try {
       const size = await stream(dest);
       updateJob(id, { gps_path: dest });
-      return NextResponse.json({ id, gpsPath: dest, bytes: size });
+      const queue = enqueue(id);
+      return NextResponse.json({ id, gpsPath: dest, bytes: size, ...queue });
     } catch (err) {
       // A failed GPS attach never blocks the job: it degrades to a manual map
-      // pin, which the pipeline already handles.
+      // pin, which the pipeline already handles. It still scans.
       const message = err instanceof Error ? err.message : String(err);
+      enqueue(id);
       return NextResponse.json({ id, error: message }, { status: 500 });
     }
   }
 
   /* ---- first call: the footage ---- */
   const name = url.searchParams.get('name')?.slice(0, 120) || 'Untitled clip';
+  const autostart = url.searchParams.get('autostart') !== '0';
   const id = createJob(name);
   const dest = path.join(storageDir('jobs', String(id)), `footage${ext}`);
 
   try {
     const bytes = await stream(dest);
     updateJob(id, { footage_path: dest, status: 'ingested' });
-    return NextResponse.json({ id, name, bytes, path: dest });
+    const queue = autostart
+      ? enqueue(id)
+      : { queued: false, position: 0, deferred: true } as const;
+    return NextResponse.json({ id, name, bytes, path: dest, ...queue });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     updateJob(id, { status: 'failed', error: message });
@@ -81,6 +94,9 @@ export async function POST(request: Request) {
   }
 }
 
+/** Job list with a live queue snapshot on each row. */
 export async function GET() {
-  return NextResponse.json({ jobs: listJobs() });
+  return NextResponse.json({
+    jobs: listJobs().map((j) => ({ ...j, progress: progressOf(j.id) })),
+  });
 }

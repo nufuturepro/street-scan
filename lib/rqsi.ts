@@ -195,7 +195,11 @@ export function buildRqsi(opts: {
   track: GpsTrack;
   detections: Detection[];
 }): RouteSegment[] {
-  const { jobId, track, detections } = opts;
+  const { jobId, track } = opts;
+  // Street grade, street findings only. A sidewalk defect is real and gets
+  // its own row on the dashboard, but charging it to a driving segment would
+  // turn a smooth street red for something no tyre ever touched.
+  const detections = opts.detections.filter((d) => d.surface !== 'sidewalk');
   const edges = splitRoute(track.samples);
   if (!edges.length) return [];
 

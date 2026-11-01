@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Detection } from '@/lib/types';
-
-const SEVERITY_COLORS: Record<number, string> = {
-  1: '#71717a',
-  2: '#0ea5e9',
-  3: '#f59e0b',
-  4: '#f97316',
-  5: '#ef4444',
-};
+import { paintMask, SEVERITY_COLORS } from './mask';
 
 /** How long after its sample frame a mask stays painted. */
 const MASK_HOLD_BEFORE = 0.8;
@@ -19,6 +12,8 @@ type Props = {
   src: string | null;
   detections: Detection[];
   activeId: number | null;
+  /** Increments on every selection, so re-asking for the same hazard re-seeks. */
+  seekToken: number;
   onSelect: (id: number) => void;
 };
 
@@ -30,7 +25,7 @@ type Props = {
  * short window around its sample time rather than flickering for 1/10s; the
  * alternative looks correct in code and terrible on screen.
  */
-export default function VideoPane({ src, detections, activeId, onSelect }: Props) {
+export default function VideoPane({ src, detections, activeId, seekToken, onSelect }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
@@ -65,38 +60,11 @@ export default function VideoPane({ src, detections, activeId, onSelect }: Props
           if (t < sample - MASK_HOLD_BEFORE || t > sample + MASK_HOLD_AFTER) continue;
           if (!d.polygon || d.polygon.length < 3) continue;
 
-          const isActive = d.id === activeId;
-          const color = SEVERITY_COLORS[d.severity] ?? '#f59e0b';
-
-          ctx.beginPath();
-          d.polygon.forEach(([x, y], i) => {
-            const px = x * canvas.width;
-            const py = y * canvas.height;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+          paintMask(ctx, d, {
+            width: canvas.width,
+            height: canvas.height,
+            active: d.id === activeId,
           });
-          ctx.closePath();
-
-          ctx.fillStyle = color;
-          ctx.globalAlpha = isActive ? 0.42 : 0.22;
-          ctx.fill();
-          ctx.globalAlpha = isActive ? 1 : 0.65;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = isActive ? 3 : 2;
-          ctx.stroke();
-
-          const first = d.polygon[0];
-          const label = `${d.hazardType.replace('_', '-')}  S${d.severity}`;
-          ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
-          const textW = ctx.measureText(label).width;
-          const lx = Math.max(2, first[0] * canvas.width);
-          const ly = Math.max(16, first[1] * canvas.height - 8);
-          ctx.globalAlpha = isActive ? 1 : 0.8;
-          ctx.fillStyle = color;
-          ctx.fillRect(lx - 2, ly - 14, textW + 8, 17);
-          ctx.fillStyle = '#09090b';
-          ctx.fillText(label, lx + 2, ly - 2);
-          ctx.globalAlpha = 1;
         }
       }
 
@@ -109,6 +77,33 @@ export default function VideoPane({ src, detections, activeId, onSelect }: Props
       cancelAnimationFrame(frameRef.current);
     };
   }, [detections, activeId]);
+
+  // A mask is only painted for ~2.6s around its sample frame, so an audit
+  // opened at 00:00 shows an unmarked street and no way to tell why. Selecting
+  // a hazard is the moment to jump to it - and selecting the same hazard a
+  // second time has to jump again, which is what seekToken is for.
+  //
+  // Neither deps entry reacts to polling: the dashboard refreshes every 5s and
+  // hands down a fresh detections array each time, so listing `detections`
+  // here would re-seek every five seconds and yank playback out from under
+  // whoever is reviewing it. It is read through a ref for the same reason.
+  const detectionsRef = useRef(detections);
+  useEffect(() => {
+    detectionsRef.current = detections;
+  }, [detections]);
+
+  useEffect(() => {
+    if (activeId == null) return;
+    const d = detectionsRef.current.find((x) => x.id === activeId);
+    const video = videoRef.current;
+    if (!d || !video) return;
+    const seek = () => {
+      video.currentTime = d.tMs / 1000;
+    };
+    if (video.readyState >= 1) seek();
+    else video.addEventListener('loadedmetadata', seek, { once: true });
+    return () => video.removeEventListener('loadedmetadata', seek);
+  }, [activeId, seekToken]);
 
   const seekTo = (id: number) => {
     const d = detections.find((x) => x.id === id);

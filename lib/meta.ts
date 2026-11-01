@@ -4,6 +4,8 @@ import {
   META_API_BASE,
   SAM_MIN_BILLED_FRAMES,
   SAM_USD_PER_1000_FRAMES,
+  SPARK_USD_PER_1M_IN,
+  SPARK_USD_PER_1M_OUT,
   clientMode,
 } from './config';
 import type { Classification, HazardType, SamFrame } from './types';
@@ -101,10 +103,6 @@ function recordBilled(n: number, onBilled?: (n: number) => void) {
   tally.usd += (billed / 1000) * SAM_USD_PER_1000_FRAMES;
   onBilled?.(billed);
 }
-
-/** muse-spark-1.3 standard mode, per 1M tokens - dev.meta.ai/docs/pricing-rate-limits */
-const SPARK_USD_PER_1M_IN = 1.25;
-const SPARK_USD_PER_1M_OUT = 4.25;
 
 type SparkUsage = {
   input_tokens?: number;

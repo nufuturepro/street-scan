@@ -81,6 +81,7 @@ type DetectionOpts = {
   type?: HazardType;
   severity?: 1 | 2 | 3 | 4 | 5;
   id?: number;
+  surface?: 'roadway' | 'sidewalk';
 };
 
 function det(opts: DetectionOpts): Detection {
@@ -105,6 +106,7 @@ function det(opts: DetectionOpts): Detection {
     osmDisagrees: false,
     serviceCode: 'TEST',
     priority: 'P3',
+    surface: opts.surface ?? 'roadway',
   };
 }
 
@@ -256,6 +258,22 @@ assert(
 assert(
   run(25, [det({ along: 5, severity: 1 }), det({ along: 20, severity: 4 })])[0].grade === 'red',
   'one severe defect reddens the whole segment'
+);
+
+// Sidewalk findings are real but graded apart: a severity-5 sidewalk defect
+// must not redden a driving segment no tyre ever touched.
+const walkOnly = run(25, [det({ along: 12, severity: 5, surface: 'sidewalk' })]);
+assert(
+  walkOnly.length === 1 && walkOnly[0].grade === 'green' && walkOnly[0].defectCount === 0,
+  `sidewalk findings are excluded from the street grade - got ${walkOnly[0]?.grade}/${walkOnly[0]?.defectCount}`
+);
+const mixed = run(25, [
+  det({ along: 5, severity: 4 }),
+  det({ along: 20, severity: 5, surface: 'sidewalk' }),
+]);
+assert(
+  mixed[0].grade === 'red' && mixed[0].defectCount === 1,
+  `only the street defect counts - got ${mixed[0].grade}/${mixed[0].defectCount}`
 );
 
 /* --------------------- 4. index arithmetic + clamp --------------------- */

@@ -44,6 +44,7 @@ type DetectionRow = {
   osm_disagrees: number;
   service_code: string;
   priority: string;
+  surface: string | null;
   created_at: string;
 };
 
@@ -105,6 +106,9 @@ function toDetection(r: DetectionRow): Detection {
     osmDisagrees: !!r.osm_disagrees,
     serviceCode: r.service_code,
     priority: r.priority,
+    // Rows written before the column existed are roadway - the only sidewalk
+    // findings that ever reached the table came after it.
+    surface: r.surface === 'sidewalk' ? 'sidewalk' : 'roadway',
   };
 }
 
@@ -180,16 +184,14 @@ export function readGps(jobId: number): GpsTrack {
   }
 }
 
-/* --------------------------- detections --------------------------- */
-
-export function insertDetection(d: Detection): number {
+/* --------------------------- detections --------------------------- */export function insertDetection(d: Detection): number {
   const res = db()
     .prepare(
       `INSERT INTO detections
        (job_id, hazard_type, severity, confidence, t_ms, lat, lon, street, cross_street,
-        description, needs_review, review_status, polygon_json, frame_index,
-        osm_street, osm_disagrees, service_code, priority)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        description, needs_review, review_status, polygon_json, frame_index, osm_street,
+        osm_disagrees, service_code, priority, surface)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       d.jobId,
@@ -209,7 +211,8 @@ export function insertDetection(d: Detection): number {
       d.osmStreet,
       d.osmDisagrees ? 1 : 0,
       d.serviceCode,
-      d.priority
+      d.priority,
+      d.surface ?? 'roadway'
     );
   return Number(res.lastInsertRowid);
 }

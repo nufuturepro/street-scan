@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 /**
  * Raw streamed upload with progress.
@@ -12,17 +12,22 @@ import { useRouter } from 'next/navigation';
  *
  * Two requests: the footage first (that creates the job), then - only if the
  * picker was used - the original recording for its GPS track, because the flattened
- * export carries none. A failed attach still navigates: no GPS is a
+ * export carries none. A failed attach still queues the scan: no GPS is a
  * manual pin, not a dead job.
+ *
+ * The scan itself starts server-side on ingest (autostart), so the page does
+ * not navigate away and does not hold a stream open. When a GPS source is
+ * staged, the footage upload sends autostart=0 and the GPS upload enqueues
+ * instead - otherwise the pipeline would read GPS before it finished landing.
  */
 export default function Uploader() {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [pct, setPct] = useState<number | null>(null);
   const [phase, setPhase] = useState<'footage' | 'gps'>('footage');
   const [source, setSource] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [queued, setQueued] = useState<{ id: number; deferred: boolean } | null>(null);
 
   const uploadGps = (id: number, done: () => void) => {
     const file = source;
@@ -41,6 +46,8 @@ export default function Uploader() {
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) setPct(Math.round((e.loaded / e.total) * 100));
     };
+    // The GPS call enqueues the scan whether it lands or fails, so either way
+    // the job is moving - report it and let the audits list show the rest.
     xhr.onload = () => {
       setPct(null);
       done();
@@ -54,11 +61,15 @@ export default function Uploader() {
 
   const upload = (file: File) => {
     setError(null);
+    setQueued(null);
     setPhase('footage');
     setPct(0);
 
     const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '.mp4';
-    const url = `/api/jobs?name=${encodeURIComponent(file.name.replace(/\.[^.]+$/, ''))}&ext=${encodeURIComponent(ext)}`;
+    // A staged GPS source means a second upload is coming; hold the scan until
+    // it lands so the pipeline reads the original recording, not the flattened one.
+    const autostart = source ? '0' : '1';
+    const url = `/api/jobs?name=${encodeURIComponent(file.name.replace(/\.[^.]+$/, ''))}&ext=${encodeURIComponent(ext)}&autostart=${autostart}`;
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
@@ -79,8 +90,13 @@ export default function Uploader() {
           setError(res.error ?? `Upload failed (${xhr.status})`);
           return;
         }
-        if (source) uploadGps(res.id, () => router.push(`/inspect/${res.id}`));
-        else router.push(`/inspect/${res.id}`);
+        if (source) {
+          uploadGps(res.id, () =>
+            setQueued({ id: res.id, deferred: true })
+          );
+        } else {
+          setQueued({ id: res.id, deferred: false });
+        }
       } catch {
         setError('Could not read server response.');
       }
@@ -94,7 +110,6 @@ export default function Uploader() {
       : phase === 'gps'
         ? `Attaching GPS source… ${pct}%`
         : `Uploading… ${pct}%`;
-
   return (
     <div>
       <label
@@ -127,9 +142,7 @@ export default function Uploader() {
           }}
         />
         <span className="text-sm text-zinc-300">{status}</span>
-        <span className="text-xs text-zinc-500">
-          MP4 or MOV · flattened from your original recording
-        </span>
+        <span className="text-xs text-zinc-500">MP4 or MOV</span>
         {pct !== null && (
           <div className="h-1.5 w-64 max-w-full overflow-hidden rounded-full bg-zinc-800">
             <div
@@ -160,6 +173,23 @@ export default function Uploader() {
         <p className="mt-3 text-sm text-red-400" role="alert">
           {error}
         </p>
+      )}
+      {queued && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-300">
+          <span>
+            #{queued.id} queued — scanning starts in the background. You can
+            upload more while it runs.
+          </span>
+          <Link
+            href={`/inspect/${queued.id}`}
+            className="text-amber-400 hover:text-amber-300"
+          >
+            Watch it →
+          </Link>
+          <Link href="/" className="text-zinc-500 hover:text-zinc-300">
+            (stay here)
+          </Link>
+        </div>
       )}
     </div>
   );

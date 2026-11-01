@@ -37,6 +37,13 @@ export type Detection = {
   osmDisagrees: boolean;
   serviceCode: string;
   priority: string;
+  /**
+   * Where the hazard sits: the travel way, or the sidewalk beside it.
+   * Sidewalk findings are kept (they used to be discarded) but never mixed
+   * into the street queue or the street grade - see the dashboard's surface
+   * filter and lib/rqsi.ts's roadway-only rule.
+   */
+  surface: 'roadway' | 'sidewalk';
 };
 
 export type HazardType =
@@ -59,7 +66,28 @@ export type GpsTrack = {
   samples: GpsSample[];
 };
 
-export type JobStatus = 'ingested' | 'transcoded' | 'segmenting' | 'enriching' | 'ready' | 'failed';
+export type JobStatus =
+  | 'ingested'
+  | 'queued'
+  | 'transcoding'
+  | 'transcoded'
+  | 'segmenting'
+  | 'enriching'
+  | 'ready'
+  | 'failed';
+
+/**
+ * One job's live scan progress, as any page reads it from the queue.
+ * `position` is 0 while the job holds a slot and 1+ while it waits.
+ */
+export type JobProgress = {
+  stage: string;
+  done: number;
+  total: number;
+  message: string;
+  clientMode?: 'live' | 'fixture';
+  position: number;
+};
 
 export type Job = {
   id: number;

@@ -38,14 +38,17 @@ export function buildClassificationPrompt(): string {
     'If a sign is not clearly legible, return null for that field - do not guess.',
     '',
     'confidence is your honest probability that the hazard TYPE is correct (0 to 1).',
-    '',    'Set onRoadway to true when the patch is in the travel way: the roadway surface,',
+    '',    '    Set onRoadway to true when the patch is in the travel way: the roadway surface,',
     'a bike lane, a bus lane, a crosswalk, or a vehicle or object occupying those spaces.',
     'A vehicle, barrier or debris blocking a travel lane or bike lane IS on roadway - the',
     'blockage is the hazard.',
     '',
-    'Return false when it sits on a sidewalk, building, wall, yard or driveway, or on a',
-    'vehicle parked clear of the travel way at the curb or in a parking lane. Those are not',
-    'roadway hazards and must not be reported.',
+    'Set onRoadway to false when it sits on a sidewalk, building, wall, yard or driveway, or',
+    'on a vehicle parked clear of the travel way at the curb or in a parking lane.',
+    'For a sidewalk finding, severity still follows the rubric but judge it as a PEDESTRIAN',
+    'would: 1 = cosmetic, 2 = noticeable, 3 = a trip hazard most people step over, 4 = forces',
+    'a wheelchair, stroller or walker around or into the gutter, 5 = impassable without',
+    'entering the street. Cite what makes it a pedestrian problem in the justification.',
     '',
     'Return JSON only, with exactly these keys:',
     JSON.stringify({
@@ -99,9 +102,10 @@ export async function classifyTrack(opts: {
     seed: hashSeed(jobId, track.best.frameIndex, track.objectId),
   });
 
-  // Sidewalk and curb patches match SAM's vocabulary but are not road hazards,
-  // so reject them here instead of shipping a false positive to the queue.
-  if (!classification.onRoadway) return null;
+  // Sidewalk patches match SAM's vocabulary too. They are kept rather than
+  // discarded - but tagged, so the dashboard can show them as their own class
+  // instead of passing a sidewalk defect off as a street hazard.
+  const surface: Detection['surface'] = classification.onRoadway ? 'roadway' : 'sidewalk';
 
   // Guard the classifier's output: an out-of-taxonomy answer falls back rather
   // than crashing the job or filing an unrecognised service code.
@@ -153,6 +157,7 @@ export async function classifyTrack(opts: {
     osmDisagrees: agrees === false,
     serviceCode: spec.serviceCode,
     priority: spec.priority,
+    surface,
   };
 
   return { detection, classification };
