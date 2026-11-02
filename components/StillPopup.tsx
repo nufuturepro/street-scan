@@ -51,8 +51,10 @@ export default function StillPopup({ detection, rect, onReview }: Props) {
   const top = Math.max(8, Math.min(rect.top, window.innerHeight - H - 104));
 
   return (
+    /* z-[600]: above the sticky header (500) and, with the map now isolated
+       in its own stacking context (see HazardMap), above the map itself. */
     <div
-      className="fixed z-50 w-64 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl shadow-black/50"
+      className="fixed z-[600] w-64 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl shadow-black/50"
       style={{ left, top }}
     >
       <div className="relative bg-zinc-800">

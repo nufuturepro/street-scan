@@ -155,7 +155,15 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
         : FALLBACK_CENTER;
 
   return (
-    <div className="relative h-full w-full">
+    /*
+      isolate: Leaflet paints its panes at z-index 200-1000, and without a
+      stacking context of its own the map container let those values compete
+      with everything on the page - the queue-row hover popup (z-50) and the
+      sticky header (z-500) both lost to map tiles and the legend. Isolation
+      contains every Leaflet z-index inside this wrapper, so overlays outside
+      the map layer in DOM order instead of against a magic number.
+    */
+    <div className="relative isolate h-full w-full">
     <MapContainer
       center={center}
       zoom={located.length > 0 || segments.length > 0 ? 16 : 13}
