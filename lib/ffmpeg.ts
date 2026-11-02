@@ -269,16 +269,26 @@ export async function cropToMask(
   const maxY = Math.max(...ys);
   const info = await probe(sourceFile);
   // 10% context margin so the classifier can see the surrounding road.
+  // The padded bounds are clamped to the frame BEFORE the size is derived:
+  // clamping the size against padded space let a mask sitting on the frame
+  // edge (SAM boxes do overshoot) request a crop wider than the frame, which
+  // ffmpeg rejects outright - and that single rejection used to kill the run.
   const padX = (maxX - minX) * 0.1 + 0.01;
   const padY = (maxY - minY) * 0.1 + 0.01;
-  const x = Math.max(0, minX - padX) * info.width;
-  const y = Math.max(0, minY - padY) * info.height;
-  const w = Math.min(1 - (minX - padX), maxX + padX - (minX - padX)) * info.width;
-  const h = Math.min(1 - (minY - padY), maxY + padY - (minY - padY)) * info.height;
+  const left = Math.min(1, Math.max(0, minX - padX));
+  const right = Math.min(1, Math.max(0, maxX + padX));
+  const top = Math.min(1, Math.max(0, minY - padY));
+  const bottom = Math.min(1, Math.max(0, maxY + padY));
+  // floor(left*W) + floor((right-left)*W) <= floor(right*W) <= W, so the
+  // crop always fits; the final -2 guards a degenerate zero-width box.
+  const x = Math.min(Math.floor(left * info.width), info.width - 2);
+  const y = Math.min(Math.floor(top * info.height), info.height - 2);
+  const w = Math.max(2, Math.floor((right - left) * info.width));
+  const h = Math.max(2, Math.floor((bottom - top) * info.height));
 
   const res = await run(ffmpeg, [
     '-y', '-ss', String(Math.max(0, timeSec)), '-i', sourceFile,
-    '-vf', `crop=${Math.max(2, Math.floor(w))}:${Math.max(2, Math.floor(h))}:${Math.floor(x)}:${Math.floor(y)}`,
+    '-vf', `crop=${w}:${h}:${x}:${y}`,
     '-frames:v', '1', '-q:v', '2', outPng,
   ]);
   if (res.code !== 0 || !existsSync(outPng)) {

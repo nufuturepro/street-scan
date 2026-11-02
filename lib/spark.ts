@@ -30,6 +30,10 @@ export function buildClassificationPrompt(): string {
     '',
     'Classify the hazard into exactly one of these types:',
     rubricPrompt(),
+    '- not_a_defect: an intact manhole cover, utility access cover, valve cover, metal',
+    '  plate, painted marking, drain or shadow - not a road defect, even when sunken,',
+    '  dark or cracked through. Return it and the pipeline discards the patch; never',
+    '  force one of these into the list above.',
     '',
     'Severity must be an integer 1-5 and must follow the rubric above for the type you chose.',
     '',
@@ -52,7 +56,7 @@ export function buildClassificationPrompt(): string {
     '',
     'Return JSON only, with exactly these keys:',
     JSON.stringify({
-      hazardType: HAZARD_TYPES,
+      hazardType: [...HAZARD_TYPES, 'not_a_defect'],
       severity: 'integer 1-5',
       confidence: 'number 0-1',
       onRoadway: 'boolean',
@@ -102,16 +106,17 @@ export async function classifyTrack(opts: {
     seed: hashSeed(jobId, track.best.frameIndex, track.objectId),
   });
 
+  // The classifier's reject: an intact cover, plate or marking it refused to
+  // file. normalizeType has already turned every unknown answer into this, so
+  // a manhole answer can no longer fall through to a pothole work order.
+  if (classification.hazardType === 'not_a_defect') return null;
+
   // Sidewalk patches match SAM's vocabulary too. They are kept rather than
   // discarded - but tagged, so the dashboard can show them as their own class
   // instead of passing a sidewalk defect off as a street hazard.
   const surface: Detection['surface'] = classification.onRoadway ? 'roadway' : 'sidewalk';
 
-  // Guard the classifier's output: an out-of-taxonomy answer falls back rather
-  // than crashing the job or filing an unrecognised service code.
-  const hazardType = HAZARD_TYPES.includes(classification.hazardType)
-    ? classification.hazardType
-    : 'pothole';
+  const hazardType = classification.hazardType;
   const spec = TAXONOMY[hazardType];
 
   const geo = interpolate(gps, tMs);

@@ -72,7 +72,10 @@ export const TAXONOMY: Record<HazardType, HazardSpec> = {
       '1 = under 10cm, cosmetic. 2 = 10-20cm, not in wheel path. ' +
       '3 = 10-30cm in the wheel path. 4 = 30cm+, multiple connected. ' +
       '5 = over 30cm, clustered failure, or breaking the road edge.',
-    hint: 'Roughly circular or oval depression with broken edges, road-worn interior.',
+    hint:
+      'Roughly circular or oval depression with broken edges, road-worn interior - ' +
+      'broken pavement, never a metal or concrete lid: a manhole or utility cover, ' +
+      'however sunken or dark, is not_a_defect.',
   },
   cave_in: {
     label: 'Cave-in',

@@ -138,7 +138,7 @@ export function updateJob(
     analysis_path: string | null;
     gps_path: string | null;
     gps_source: string;
-    gps_json: string;
+    gps_json: string | null;
     status: JobStatus;
     frames: number;
     analysis_fps: number;

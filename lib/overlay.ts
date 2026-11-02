@@ -30,8 +30,33 @@ import type { GpsSample, GpsTrack } from './types';
  * exactly like a recording with GPS switched off.
  */
 
-/** White glyphs on a dark night frame: anything brighter than this is text. */
-const LUMA_CUT = 185;
+/** Night clips: white glyphs on a dark frame - anything brighter than this is text. */
+const LUMA_CUT_NIGHT = 185;
+
+/**
+ * Daylight: a high cut instead of the night one - white glyphs stay above
+ * 235 while sunlit asphalt mostly drops below it (the night cut erases both
+ * together: 16/222 on the same daylight clip this chain reads 32/222).
+ *
+ * A black-outline extraction (keep dark pixels) parses ~3x more daylight
+ * frames but must NOT be used: measured values show it turns -73.98 into
+ * -78.98 ('3' read as '8'), so its garbage parses outnumber the true ones,
+ * the median anchor flips, and buildTrack then rejects the REAL fixes as
+ * outliers - a 1.1 km drive graded as a 16 km route through Pennsylvania.
+ * Parse RATE is not parse ACCURACY: verify coordinates, not counts.
+ */
+const LUMA_CUT_DAY = 235;
+
+function cornerFilter(cut: number): string {
+  return [
+    `fps=${OVERLAY_SAMPLE_FPS}`,
+    CORNER,
+    'scale=2000:-1', // OCR reads the upscaled corner far better than the raw one
+    'format=gray',
+    `lutyuv=y='if(gt(val,${cut}),255,0)'`,
+    'negate',
+  ].join(',');
+}
 
 /** Corner crop, as fractions of the frame. Measured on a 1080p clip, not guessed. */
 const CORNER = `crop=iw*${OVERLAY_CROP_W}:ih*${OVERLAY_CROP_H}:0:0`;
@@ -130,27 +155,28 @@ export async function extractOverlayGps(
     if (!ffmpeg) return empty;
 
     mkdirSync(dir, { recursive: true });
-    const filter = [
-      `fps=${OVERLAY_SAMPLE_FPS}`,
-      CORNER,
-      'scale=2000:-1', // OCR reads the upscaled corner far better than the raw one
-      'format=gray',
-      `lutyuv=y='if(gt(val,${LUMA_CUT}),255,0)'`,
-      'negate',
-    ].join(',');
+    // One decode, two binarisations of the same corner: the night chain and
+    // the day chain written as separate sequences, so every frame can be tried
+    // against both without decoding the video twice.
+    const graph =
+      `[0:v]split=2[n][d];` +
+      `[n]${cornerFilter(LUMA_CUT_NIGHT)}[nf];` +
+      `[d]${cornerFilter(LUMA_CUT_DAY)}[df]`;
 
     const res = await run(ffmpeg, [
       '-y', '-loglevel', 'error',
       '-i', videoFile,
-      '-vf', filter,
-      path.join(dir, 'f%04d.png'),
+      '-filter_complex', graph,
+      '-map', '[nf]', path.join(dir, 'n%04d.png'),
+      '-map', '[df]', path.join(dir, 'd%04d.png'),
     ]);
     if (res.code !== 0) {
       console.error('[overlay] frame extraction failed:', res.stderr.slice(-300));
       return empty;
     }
 
-    const files = readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
+    const files = readdirSync(dir).filter((f) => f.startsWith('n')).sort();
+    const day = readdirSync(dir).filter((f) => f.startsWith('d')).sort();
     if (!files.length) return empty;
 
     // Language data downloads once and is cached in the mounted storage
@@ -161,9 +187,22 @@ export async function extractOverlayGps(
 
     try {
       const found: Array<{ index: number; fix: OverlayFix }> = [];
+      let nightFixes = 0;
+      let dayFixes = 0;
       for (let i = 0; i < files.length; i++) {
-        const { data } = await worker.recognize(readFileSync(path.join(dir, files[i])));
-        const fix = parseOverlay(data.text);
+        let fix = parseOverlay(
+          (await worker.recognize(readFileSync(path.join(dir, files[i])))).data.text
+        );
+        if (fix) nightFixes++;
+        else if (day[i]) {
+          // The night chain found nothing: daylight. Try the high-cut chain
+          // before giving up - see LUMA_CUT_DAY for why it must stay a
+          // brightness cut and not an outline extraction.
+          fix = parseOverlay(
+            (await worker.recognize(readFileSync(path.join(dir, day[i])))).data.text
+          );
+          if (fix) dayFixes++;
+        }
         if (fix) found.push({ index: i, fix });
         else if (found.length === 0 && i + 1 >= GIVE_UP_AFTER) break;
         onProgress?.(i + 1, files.length);
@@ -175,7 +214,10 @@ export async function extractOverlayGps(
       }
 
       const samples = buildTrack(found, OVERLAY_SAMPLE_FPS);
-      console.log(`[overlay] ${samples.length}/${files.length} frames gave a fix`);
+      console.log(
+        `[overlay] ${samples.length}/${files.length} frames gave a fix ` +
+          `(night ${nightFixes}, day ${dayFixes})`
+      );
       if (!samples.length) return empty;
       return { source: 'overlay', samples };
     } finally {

@@ -169,32 +169,54 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
     const skipOsm = client.mode === 'fixture'; // no coords yet means nothing to check
     let done = 0;
     let skipped = 0;
+    let failed = 0;
 
     // A re-run replaces this job's results instead of appending a second set.
     deleteDetections(jobId);
     updateJob(jobId, { status: 'enriching' });
 
     for (const track of tracks) {
-      const result = await classifyTrack({
-        jobId,
-        analysisPath: analysisPath!,
-        track,
-        fps,
-        gps,
-        client,
-        skipOsm: skipOsm || gps.samples.length === 0,
-      });
+      // One bad track must not cost the whole audit: a crop ffmpeg rejects or
+      // a transient API error skips that detection - counted below - instead
+      // of failing the run after its rows were already cleared for the re-run.
+      let result: Awaited<ReturnType<typeof classifyTrack>>;
+      try {
+        result = await classifyTrack({
+          jobId,
+          analysisPath: analysisPath!,
+          track,
+          fps,
+          gps,
+          client,
+          skipOsm: skipOsm || gps.samples.length === 0,
+        });
+      } catch (err) {
+        done += 1;
+        failed += 1;
+        console.error(
+          `[classify] job ${jobId} frame ${track.best.frameIndex} skipped:`,
+          err instanceof Error ? err.message : err
+        );
+        report({
+          stage: 'classifying',
+          done,
+          total: tracks.length,
+          message: `classification error - ${failed} skipped of ${done} seen`,
+          clientMode: seg.clientMode,
+        });
+        continue;
+      }
       done += 1;
 
-      // Rejected as not-on-roadway: count it so the skip is visible in the
-      // progress stream instead of a detection that silently never appears.
+      // Rejected by the classifier as not a defect (see lib/spark.ts): counted
+      // so the skip shows in the progress stream instead of silently vanishing.
       if (!result) {
         skipped += 1;
         report({
           stage: 'classifying',
           done,
           total: tracks.length,
-          message: `not on roadway - ${skipped} rejected of ${done} seen`,
+          message: `not a defect - ${skipped} rejected of ${done} seen`,
           clientMode: seg.clientMode,
         });
         continue;

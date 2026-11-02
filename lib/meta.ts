@@ -9,6 +9,7 @@ import {
   clientMode,
 } from './config';
 import type { Classification, HazardType, SamFrame } from './types';
+import { HAZARD_TYPES } from './taxonomy';
 import { buildFixtureClassification, streamFixtureFrames } from './fixtures';
 
 /**
@@ -445,15 +446,27 @@ function parsedShape(data: unknown): Record<string, unknown> {
   return d;
 }
 
+/**
+ * The seam where a model answer becomes a work order. Case, padding and
+ * separators are normalised the way models actually emit them; a present-but-
+ * unknown answer is a REJECT, not a pothole. The old unknown->'pothole'
+ * fallback here is how an intact manhole cover came out of the pipeline as a
+ * pothole work order: a fabricated filing is worse than a skipped detection,
+ * and the pipeline counts rejects out loud.
+ */
+export function normalizeType(v: unknown): HazardType | 'not_a_defect' {
+  if (v == null) return 'pothole';
+  const requested = String(v).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return (HAZARD_TYPES as readonly string[]).includes(requested)
+    ? (requested as HazardType)
+    : 'not_a_defect';
+}
+
 function normalize(raw: Record<string, unknown>): Classification {
   const severityRaw = Math.round(Number(raw.severity ?? 3));
   const sc = (raw.streetContext ?? {}) as Record<string, unknown>;
-  const types: HazardType[] = ['pothole', 'cave_in', 'crack', 'blocked_lane', 'debris'];
-  const requested = String(raw.hazardType ?? raw.hazard_type ?? 'pothole');
   return {
-    hazardType: (types.includes(requested as HazardType)
-      ? requested
-      : 'pothole') as HazardType,
+    hazardType: normalizeType(raw.hazardType ?? raw.hazard_type),
     severity: (Number.isFinite(severityRaw)
       ? Math.min(5, Math.max(1, severityRaw))
       : 3) as Classification['severity'],

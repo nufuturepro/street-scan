@@ -200,7 +200,10 @@ export type HazardGroup = {
 
 /** Structured response we ask Muse Spark for. */
 export type Classification = {
-  hazardType: HazardType;
+  /** 'not_a_defect' is the classifier's reject: an intact manhole or utility
+   * cover, metal plate or marking it correctly refused to file. The pipeline
+   * drops these instead of forcing them into the taxonomy. */
+  hazardType: HazardType | 'not_a_defect';
   severity: 1 | 2 | 3 | 4 | 5;
   confidence: number;
   justification: string;
