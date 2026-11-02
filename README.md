@@ -73,6 +73,8 @@ What the app does, function by function - the operator's view. Each one says whe
   and a **Review video →** button that opens the footage at that hazard's timestamp.
 - Images come from `GET /api/detections/:id/still` - one ffmpeg cut per detection, cached on
   the server, never a model call.
+- The popup layers **above** the map and the sticky header: Leaflet's panes (z-index 200-1000)
+  are contained in the map's own stacking context, so nothing on the page has to out-z them.
 
 ### 5. Review footage in place
 
@@ -96,6 +98,9 @@ What the app does, function by function - the operator's view. Each one says whe
   passes cover it.
 - The route-quality legend sits on the map, and the view does not snap back to fit on every
   poll - the zoom you chose is the zoom you keep.
+- The basemap is **Esri Dark Gray Canvas**, not Carto: Carto began keying its basemaps and
+  answers unauthenticated requests with HTTP 200 plus an "API KEY REQUIRED" watermark tile -
+  a silent blank map rather than a loud failure. Esri's canvas is keyless and already dark.
 
 ### 7. Grade the route (RQSI)
 
@@ -251,12 +256,14 @@ and only a corroborated pair - never a disputed one - earns a verification.
 | Route | Purpose |
 |---|---|
 | `POST /api/jobs?name=&ext=` | raw streamed upload (no multipart buffering — a 10-minute 4K clip would otherwise take the dev server down) |
-| `POST /api/jobs/:id/process` | runs the pipeline, streams SSE progress |
-| `GET /api/jobs/:id` | job + detections + counts + GPS + cost |
+| `POST /api/jobs/:id/process` | enqueues a scan (JSON, idempotent) - the queue runs it; any page reads progress from the job/dashboard GETs |
+| `GET /api/dashboard` | every job + detection + hazard group + RQSI segment, plus the live queue snapshot, in one request |
+| `GET /api/jobs/:id` | job + detections + counts + GPS + cost + live queue progress |
 | `PATCH /api/detections/:id` | the human verification step: status, manual pin, street correction |
 | `GET /api/detections/:id/still` | the frame a hazard was found on - cut from playback on first request, then cached |
 | `GET /api/jobs/:id/export?format=` | `csv` · `geojson` · `open311` · `rqsi` |
 | `GET /api/files/:id/:name` | Range-aware video streaming (206) so scrubbing works |
+| `GET /api/costs` | the expense ledger: per-audit frames/SAM/Spark/total, credit tally, rate card |
 | `GET /api/status` | live-vs-fixture, billing state, spend against the $150 credit |
 
 ## Cost control
