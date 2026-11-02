@@ -4,6 +4,7 @@ import { computeAuditCost, type AuditCost } from '@/lib/cost';
 import { costTally } from '@/lib/meta';
 import { clientMode } from '@/lib/config';
 import { haversineM } from '@/lib/rqsi';
+import { jobSpend, allSpend } from '@/lib/spend';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +20,12 @@ type CostEntry = {
 /**
  * The expense ledger behind the spend pill: one row per audit (the same
  * arithmetic the inspect-page meter runs, so the two can never disagree),
- * plus the session tally the header reports.
+ * plus the lifetime spend from the `spend` table.
  *
- * The session total and the sum of rows legitimately differ: the tally counts
- * work in flight whose job row has not been written yet, and rows recorded
- * before the per-run fix carry an inflated bill. Both numbers are returned so
- * the page can show the difference instead of picking one.
+ * Every entry's split comes from that table's rows - written at billing time,
+ * so crashes, restarts and re-runs cannot erase them. `lifetime` is the truth
+ * for the header: it also counts probes and other standalone calls, which bill
+ * with no job attached, so it need not equal the sum of the rows below.
  */
 export async function GET() {
   const jobs = listJobs();
@@ -35,6 +36,7 @@ export async function GET() {
     for (let i = 1; i < gps.samples.length; i++) {
       distanceM += haversineM(gps.samples[i - 1], gps.samples[i]);
     }
+    const spend = jobSpend(j.id);
     return {
       id: j.id,
       name: j.name,
@@ -44,7 +46,8 @@ export async function GET() {
       cost: computeAuditCost({
         frames: j.frames,
         analysisFps: j.analysisFps,
-        billedUsd: j.costEstimateUsd,
+        billedUsd: spend.usd,
+        spend,
         distanceM: distanceM > 0 ? distanceM : null,
         // A fixture run never reaches the API, so its row shows the projection.
         simulated: clientMode() === 'fixture',
@@ -53,14 +56,11 @@ export async function GET() {
   });
 
   const tally = costTally();
-
-  // Same number the header pill reports: the session tally covers work in
-  // flight, the persisted rows cover everything billed before a restart, and
-  // a fresh process must not show $0.000 under a pill reading $5.138.
-  const persisted = entries.reduce((sum, e) => sum + (e.cost.totalUsd || 0), 0);
+  const lifetime = allSpend();
 
   return NextResponse.json({
     entries,
+    lifetime,
     session: {
       frames: tally.frames,
       requests: tally.requests,
@@ -70,7 +70,7 @@ export async function GET() {
       tokensIn: tally.tokensIn,
       tokensOut: tally.tokensOut,
       fixtureCalls: tally.fixtureCalls,
-      usd: Number(Math.max(tally.totalUsd, persisted).toFixed(4)),
+      usd: lifetime.usd,
       creditUsd: 150,
     },
   });

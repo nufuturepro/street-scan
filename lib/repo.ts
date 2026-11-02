@@ -7,6 +7,17 @@ import type { Detection, GpsTrack, Job, JobStatus, Polygon } from './types';
  * Thin data access. Plain SQL, no ORM - fewer moving parts on a deadline.
  */
 
+/**
+ * Every job read carries its ledger total. jobs.cost_estimate used to be the
+ * cost, but it held only the last run's tally and a crash or a re-run could
+ * make it undercount - the app claimed $12.09 while Meta billed $33.38. The
+ * spend table is written at billing time, so this sum cannot be lost that way.
+ */
+const JOBS_SELECT = `
+  SELECT jobs.*,
+         (SELECT COALESCE(SUM(usd), 0) FROM spend s WHERE s.job_id = jobs.id) AS spend_usd
+  FROM jobs`;
+
 type JobRow = {
   id: number;
   name: string;
@@ -19,7 +30,10 @@ type JobRow = {
   status: string;
   frames: number;
   analysis_fps: number;
+  /** frozen pre-ledger column; only the seed at db open still reads it */
   cost_estimate: number;
+  /** the job's real cost: SUM over its spend-ledger rows */
+  spend_usd: number;
   error: string | null;
   created_at: string;
 };
@@ -79,7 +93,7 @@ function toJob(r: JobRow): Job {
     status: r.status as JobStatus,
     frames: r.frames,
     analysisFps: r.analysis_fps,
-    costEstimateUsd: r.cost_estimate,
+    costEstimateUsd: Math.round(r.spend_usd * 1e4) / 1e4,
     error: r.error,
     createdAt: r.created_at,
   };
@@ -120,12 +134,12 @@ export function createJob(name: string): number {
 }
 
 export function getJob(id: number): Job | null {
-  const row = db().prepare('SELECT * FROM jobs WHERE id = ?').get(id) as JobRow | undefined;
+  const row = db().prepare(`${JOBS_SELECT} WHERE id = ?`).get(id) as JobRow | undefined;
   return row ? toJob(row) : null;
 }
 
 export function listJobs(): Job[] {
-  const rows = db().prepare('SELECT * FROM jobs ORDER BY id DESC').all() as JobRow[];
+  const rows = db().prepare(`${JOBS_SELECT} ORDER BY id DESC`).all() as JobRow[];
   return rows.map(toJob);
 }
 
@@ -142,10 +156,12 @@ export function updateJob(
     status: JobStatus;
     frames: number;
     analysis_fps: number;
-    cost_estimate: number;
     error: string | null;
   }>
 ): void {
+  // Deliberately no cost_estimate here: spend is append-only in `spend`,
+  // written at billing time. The column that used to take it was per-run and
+  // overwrote itself - that is the bug this ledger replaced.
   const keys = Object.keys(patch);
   if (!keys.length) return;
   const sets = keys.map((k) => `${k} = ?`).join(', ');

@@ -6,7 +6,8 @@ import { corroboratedIds, groupHazards } from './consensus';
 import { runSegmentation } from './sam';
 import { resolveTracks } from './filter';
 import { classifyTrack } from './spark';
-import { getMetaClient, costTally } from './meta';
+import { getMetaClient } from './meta';
+import { jobSpend } from './spend';
 import { storageDir } from './db';
 import {
   createJob,
@@ -66,7 +67,9 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
   // What a job records has to be what THIS run cost, because that number is
   // what the dashboard quotes per audit: take a reading now, store the
   // difference when the run finishes.
-  const before = costTally();
+  // What this audit had already cost before this run. The end-of-run figure
+  // is a ledger delta, so a parallel job's charges can never fold into it.
+  const spendBefore = jobSpend(jobId).usd;
 
   try {
     /* ---- 1. transcode (once) ---- */
@@ -138,6 +141,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
       analysisPath: analysisPath!,
       totalFrames: frames,
       fps,
+      jobId,
       onProgress: (doneChunks, totalChunks) =>
         report({
           stage: 'segmenting',
@@ -241,11 +245,14 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
     const corroborated = corroboratedIds(groupHazards(listAllDetections()));
     const promoted = promoteVerified(corroborated);
 
-    const cost = costTally();
-    const spent = Number((cost.totalUsd - before.totalUsd).toFixed(4));
+    // The ledger, not the session tally: every billing event landed its row
+    // under this job id the moment it was charged, so crashes, restarts,
+    // re-runs and deleted siblings cannot erase it. jobs.cost_estimate is no
+    // longer written - it was per-run and overwrote itself, which is how the
+    // app came to claim $12.09 against Meta's $33.38.
+    const spent = Number((jobSpend(jobId).usd - spendBefore).toFixed(4));
     updateJob(jobId, {
       status: 'ready',
-      cost_estimate: spent,
       error: null,
     });
 

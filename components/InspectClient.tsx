@@ -6,7 +6,7 @@ import VideoPane from './VideoPane';
 import DetectionList from './DetectionList';
 import WorkOrderPanel from './WorkOrderPanel';
 import CostMeter from './CostMeter';
-import type { Detection, Job, JobProgress } from '@/lib/types';
+import type { Detection, Job, JobProgress, SpendTotals } from '@/lib/types';
 
 type JobResponse = {
   job: Job;
@@ -18,6 +18,8 @@ type JobResponse = {
   /** configured client mode - 'fixture' means the figures are simulated */
   mode?: string;
   cost: { frames: number; usd: number };
+  /** this audit's spend-ledger rows: the meter's exact SAM/Spark split */
+  spend?: SpendTotals;
   /** live queue snapshot; null when nothing is running for this job */
   progress: JobProgress | null;
 };
@@ -235,6 +237,7 @@ export default function InspectClient({ id }: { id: number }) {
                 analysisFps={data.job.analysisFps}
                 billedUsd={data.job.costEstimateUsd}
                 distanceM={data.distanceM}
+                spend={data.spend}
                 simulated={data.mode === 'fixture'}
                 jobId={data.job.id}
               />

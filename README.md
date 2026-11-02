@@ -128,16 +128,16 @@ What the app does, function by function - the operator's view. Each one says whe
   LineStrings, `open311` for the assembled payloads. They are **assembled, never POSTed** -
   filing needs a jurisdiction account and that city's real service codes.
 - Every export row carries **what that audit cost**, and `/inspect/:id` shows the meter behind
-  that figure: ffmpeg $0.00, SAM off the frame count, Muse Spark as the residual, then the
-  total and **$/km** over the metres this run drove. A run served from fixtures is tagged
-  `simulated`, so a projected number is never mistaken for a charge.
-- The arithmetic lives in [`lib/cost.ts`](lib/cost.ts) and reads only figures the pipeline
-  already records - frames, the bill written when a run finishes, the GPS track - so the
-  meter, the export pills and the header pill cannot disagree with each other.
+  that figure: ffmpeg $0.00, SAM off the frames Meta actually billed, Muse Spark off its real
+  token counts, then the total and **$/km** over the metres this run drove. A run served from
+  fixtures is tagged `simulated`, so a projected number is never mistaken for a charge.
+- The arithmetic lives in [`lib/cost.ts`](lib/cost.ts) over the spend ledger - one row per
+  charge, written when the money moves - plus frames and the GPS track, so the meter, the
+  export pills and the header pill cannot disagree with each other.
 - The header pill reports live-vs-fixtures and spend against the $150 credit. SAM bills
   $0.20 per 1,000 frames, which is why the pipeline analyses a separate 10fps copy.
 - **Every amount links to `/costs`** - the expense ledger: per-audit SAM/Spark/total/$-per-km
-  rows, the credit bar, the rate card, and what "Spark is a residual" means. Export pills
+  rows, the credit bar, the rate card, and how every charge is accounted. Export pills
   deep-link to their own row (`/costs#job-7`).
 - CSV, GeoJSON and Open311 all carry a `surface` column (`roadway`/`sidewalk`), and a
   sidewalk work order is prefixed `Sidewalk:` so it cannot be misfiled as a street defect.
@@ -263,7 +263,7 @@ and only a corroborated pair - never a disputed one - earns a verification.
 | `GET /api/detections/:id/still` | the frame a hazard was found on - cut from playback on first request, then cached |
 | `GET /api/jobs/:id/export?format=` | `csv` · `geojson` · `open311` · `rqsi` |
 | `GET /api/files/:id/:name` | Range-aware video streaming (206) so scrubbing works |
-| `GET /api/costs` | the expense ledger: per-audit frames/SAM/Spark/total, credit tally, rate card |
+| `GET /api/costs` | the spend ledger: per-audit frames/SAM/Spark/total, lifetime credit spend, rate card |
 | `GET /api/status` | live-vs-fixture, billing state, spend against the $150 credit |
 
 ## Cost control
@@ -273,16 +273,27 @@ separate 10fps analysis copy — a 10-minute drive is 6,000 frames instead of 18
 $1.20 rather than $3.60, and a pothole is still on screen for 10–20 frames, which is far more
 than the persistence filter needs.
 
-The spend readout in the header is the real tally from `lib/meta.ts`, not a projection.
+The spend readout in the header is the **spend ledger** ([`lib/spend.ts`](lib/spend.ts)): one
+row per charge, written the moment SAM or Spark bills it, so a crash, a restart, a re-run or a
+deleted audit cannot erase what was spent. That matters - the earlier design kept a single
+per-run estimate per job, re-runs overwrote it, and the app claimed $12.09 against Meta's
+$33.38. Jobs from that period are seeded from their recorded estimate on first read, and
+Meta's usage page remains the authority for anything before the ledger.
+[`scripts/probe-usage.ts`](scripts/probe-usage.ts) exercises the live write path for about a
+cent and reads back whether the provider's own billed frame count arrived.
 
 ## Assumptions still open
 
-1. **SAM processes an uploaded video at its native frame rate.** If the spike disproves this,
-   set `ANALYSIS_FPS = PLAYBACK_FPS` in [`lib/config.ts`](lib/config.ts) and nothing else
-   changes. This is the single switch the whole transcoding design hangs on.
-2. **SAM's streaming event schema.** Unverifiable while billing returns 402, so
-   `extractFrames()` in [`lib/meta.ts`](lib/meta.ts) accepts the common shapes rather than
-   betting on one. Tighten it to the documented schema once a live call succeeds.
+1. **SAM processes an uploaded video at its native frame rate.** Settled by
+   [`scripts/probe-usage.ts`](scripts/probe-usage.ts): 50 frames sent at 10fps came back
+   billed 1:1, with the response's own `usage.video_frames_processed` saying 50. Should a
+   rate-card change ever break this, set `ANALYSIS_FPS = PLAYBACK_FPS` in
+   [`lib/config.ts`](lib/config.ts) and nothing else changes.
+2. **SAM's streaming event schema.** `extractFrames()` in [`lib/meta.ts`](lib/meta.ts)
+   still accepts the common shapes rather than betting on one, but the billed frame count
+   no longer guesses: it prefers `usage.video_frames_processed`, and every spend row's
+   `detail` records which source produced the number (`provider usage` vs
+   `frame-count estimate`), so a silent regression is readable in the ledger.
 3. **Open311 service codes are jurisdiction-specific.** `data/service-codes.json` ships a
    placeholder profile. Payloads are assembled and exported, never POSTed — filing against a
    live 311 endpoint needs a city account and that city's real `/services` catalog.

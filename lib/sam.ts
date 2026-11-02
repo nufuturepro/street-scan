@@ -37,6 +37,8 @@ export async function runSegmentation(opts: {
   totalFrames: number;
   fps?: number;
   prompt?: string;
+  /** audit these frames belong to; its spend rows hang off it */
+  jobId?: number;
   onProgress?: (doneChunks: number, totalChunks: number) => void;
 }): Promise<SegmentationResult> {
   const fps = opts.fps ?? ANALYSIS_FPS;
@@ -84,6 +86,7 @@ export async function runSegmentation(opts: {
         chunkId: w.chunkId,
         totalFrames: opts.totalFrames,
         prompt,
+        jobId: opts.jobId,
         onFrame: (f) => frames.push({ ...f, chunkId: w.chunkId, promptIdx: p }),
         onBilled: () => {
           /* cost is accumulated centrally in meta.ts */

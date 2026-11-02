@@ -7,13 +7,16 @@ import {
   SPARK_USD_PER_1M_OUT,
 } from '@/lib/config';
 import { computeAuditCost, km, perKmLabel, usd } from '@/lib/cost';
+import type { SpendTotals } from '@/lib/types';
 
 type Props = {
   frames: number;
   analysisFps?: number;
-  /** what this run was billed, persisted on the job when it finished */
+  /** what this run was billed, from the spend ledger */
   billedUsd?: number;
   distanceM?: number | null;
+  /** this audit's ledger rows - the exact split behind the line items */
+  spend?: SpendTotals;
   /** true when the run served recorded fixtures rather than calling the API */
   simulated?: boolean;
   /** links the total through to this audit's row on /costs */
@@ -35,10 +38,18 @@ export default function CostMeter({
   analysisFps,
   billedUsd,
   distanceM,
+  spend,
   simulated,
   jobId,
 }: Props) {
-  const cost = computeAuditCost({ frames, analysisFps, billedUsd, distanceM, simulated });
+  const cost = computeAuditCost({
+    frames,
+    analysisFps,
+    billedUsd,
+    distanceM,
+    spend,
+    simulated,
+  });
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">

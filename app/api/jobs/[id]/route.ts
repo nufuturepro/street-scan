@@ -4,6 +4,7 @@ import { costTally } from '@/lib/meta';
 import { clientMode } from '@/lib/config';
 import { haversineM } from '@/lib/rqsi';
 import { progressOf } from '@/lib/queue';
+import { jobSpend } from '@/lib/spend';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,9 @@ export async function GET(_req: Request, ctx: Ctx) {
     distanceM: distanceM > 0 ? Number(distanceM.toFixed(1)) : null,
     mode: clientMode(),
     cost: costTally(),
+    // This audit's ledger rows: the meter draws its line items from these,
+    // so its split is billed fact rather than frames-times-rate arithmetic.
+    spend: jobSpend(jobId),
     // Live queue snapshot: null once the job is idle. This is what the audit
     // page polls instead of holding an SSE stream of its own.
     progress: progressOf(jobId),

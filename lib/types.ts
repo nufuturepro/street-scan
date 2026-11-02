@@ -175,6 +175,22 @@ export type RouteSegment = {
 };
 
 /**
+ * Spend ledger totals, read back from `spend`. Client-safe on purpose: the
+ * meter and the costs page render these without importing server modules.
+ */
+export type SpendTotals = {
+  usd: number;
+  samUsd: number;
+  sparkUsd: number;
+  /** billed frames - only post-ledger SAM rows know theirs; seed rows carry 0 */
+  frames: number;
+  requests: number;
+  classCalls: number;
+  tokensIn: number;
+  tokensOut: number;
+};
+
+/**
  * One physical hazard, as seen across every audit that drove past it.
  *
  * Derived at read time from the detections table, exactly like RouteSegment:

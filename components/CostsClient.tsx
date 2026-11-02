@@ -20,6 +20,17 @@ type CostEntry = {
 
 type Ledger = {
   entries: CostEntry[];
+  /** every billed event, from the spend ledger: the number the pill reports */
+  lifetime: {
+    usd: number;
+    frames: number;
+    requests: number;
+    samUsd: number;
+    sparkUsd: number;
+    classCalls: number;
+    tokensIn: number;
+    tokensOut: number;
+  };
   session: {
     frames: number;
     requests: number;
@@ -85,10 +96,10 @@ export default function CostsClient() {
     );
   }
 
-  const { entries, session } = ledger;
+  const { entries, session, lifetime } = ledger;
   const rowsSumUsd = entries.reduce((s, e) => s + e.cost.totalUsd, 0);
   const rowsSumKm = entries.reduce((s, e) => s + (e.cost.distanceM ?? 0), 0);
-  const creditPct = Math.min(100, (session.usd / session.creditUsd) * 100);
+  const creditPct = Math.min(100, (lifetime.usd / session.creditUsd) * 100);
   const projected = entries.some((e) => e.cost.projected);
   const anySimulated = entries.some((e) => e.cost.simulated);
 
@@ -114,7 +125,7 @@ export default function CostsClient() {
             Credit consumed
           </span>
           <span className="font-mono text-sm tabular-nums text-zinc-200">
-            {usd(session.usd)} / {usd(session.creditUsd, 0)}
+            {usd(lifetime.usd)} / {usd(session.creditUsd, 0)}
           </span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-800">
@@ -124,23 +135,20 @@ export default function CostsClient() {
           />
         </div>
         <p className="mt-2 text-[11px] text-zinc-500">
-          {session.frames > 0 ? (
+          {lifetime.usd > 0 ? (
             <>
-              {session.frames.toLocaleString()} frames billed across{' '}
-              {session.requests} SAM request{session.requests === 1 ? '' : 's'} ·{' '}
-              {session.classCalls} classification call
-              {session.classCalls === 1 ? '' : 's'} ·{' '}
-              {session.tokensIn.toLocaleString()} in /{' '}
-              {session.tokensOut.toLocaleString()} out tokens
+              {lifetime.frames.toLocaleString()} frames billed across{' '}
+              {lifetime.requests} SAM request
+              {lifetime.requests === 1 ? '' : 's'} · {lifetime.classCalls}{' '}
+              classification call{lifetime.classCalls === 1 ? '' : 's'} ·{' '}
+              {lifetime.tokensIn.toLocaleString()} in /{' '}
+              {lifetime.tokensOut.toLocaleString()} out tokens
               {session.fixtureCalls > 0 && (
                 <> · {session.fixtureCalls} served from fixtures (free)</>
               )}
             </>
           ) : (
-            <>
-              No API calls since this server started — the total above is the
-              recorded bills of earlier runs, listed below.
-            </>
+            <>No billed API calls recorded yet.</>
           )}
         </p>
       </div>
@@ -305,10 +313,10 @@ export default function CostsClient() {
           </h2>
           <ul className="mt-2 space-y-2 text-[11px] leading-relaxed text-zinc-500">
             <li>
-              <span className="text-zinc-400">Spark is a residual.</span> Tokens
-              are tallied per process, not per audit, so a row&apos;s Spark line
-              is the bill minus the frame charge — the only two things that are
-              billed.
+              <span className="text-zinc-400">One row per charge.</span> Since
+              the ledger began, SAM rows carry the frames Meta actually billed
+              and Spark rows the real token counts; rows are written when the
+              money moves, so a crash, a restart or a re-run cannot erase them.
             </li>
             {anySimulated && (
               <li>
@@ -324,9 +332,15 @@ export default function CostsClient() {
               </li>
             )}
             <li>
-              The header pill reports the session tally, which also counts work
-              still in flight — it can exceed the sum of rows by a run that has
-              not finished writing yet.
+              Audits run before this ledger kept a single per-run estimate that
+              a re-run overwrote — the app underreported against Meta&apos;s
+              usage page. Those rows are seeded from what it recorded; Meta is
+              the authority for that period.
+            </li>
+            <li>
+              The header pill reports the lifetime ledger, which also counts
+              probes billed without an audit — so it can exceed the sum of rows
+              below.
             </li>
           </ul>
         </div>

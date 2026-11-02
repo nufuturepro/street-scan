@@ -5,20 +5,23 @@
  * disagree with the spend pill in the header:
  *
  *   jobs.frames          analysis frames (10fps) SAM actually saw, set on transcode
- *   jobs.cost_estimate   what this run was billed, written when the run finishes
+ *   the spend ledger     every billed event: SAM frames, Spark tokens, exact $
  *   the job's GPS track  metres driven, for the per-km figure
  *
- * Muse Spark has no per-job counter - tokens are tallied per process - so its
- * line is the residual: the run's bill minus the frame charge is exactly what
- * classification cost, because those two are the only things that are billed.
- * ffmpeg (transcode, stills, crops) costs nothing, which is why it gets a row:
- * showing $0.00 is the point of the row.
+ * The split is exact when the caller has read `spend` - every request that was
+ * charged has a row, so the parts add up with no residual to reconcile. Without
+ * it (a fixture run, a projection), the old derivation stands: frame charge at
+ * the published rate, Spark as whatever the bill minus that charge comes to,
+ * because those two are the only things that are billed. ffmpeg (transcode,
+ * stills, crops) costs nothing, which is why it gets a row: showing $0.00 is
+ * the point of the row.
  *
  * Fixture runs never reach the API, so nothing is billed. The meter then shows
  * what the run *would* have cost off the frame count, labelled simulated - a
  * judge must never take a recorded response for a real charge.
  */
 import { SAM_USD_PER_1000_FRAMES } from './config';
+import type { SpendTotals } from './types';
 
 export type AuditUsage = {
   /** analysis frames (10fps) this run segmented */
@@ -26,6 +29,8 @@ export type AuditUsage = {
   analysisFps?: number;
   /** what the run was billed; 0 means fixture mode or a run that never finished */
   billedUsd?: number;
+  /** the job's ledger rows - the exact split, used whenever a bill exists */
+  spend?: SpendTotals;
   distanceM?: number | null;
   /** true when the run served recorded fixtures */
   simulated?: boolean;
@@ -59,16 +64,40 @@ export const perKmLabel = (n: number) => `$${n.toFixed(2)}/km`;
 export function computeAuditCost(usage: AuditUsage): AuditCost {
   const frames = Math.max(0, Math.round(usage.frames || 0));
   const billed = Math.max(0, usage.billedUsd ?? 0);
-  const simulated = !!usage.simulated;
+  // A job with a real bill is real whatever the current mode says: fixtures
+  // never write spend rows, so billed > 0 means live money moved.
+  const simulated = !!usage.simulated && billed === 0;
   const projected = !simulated && billed === 0 && frames > 0;
+  // Exact only when there is a bill to be exact about: a job with no spend
+  // rows still needs the projection path, not a row of $0.000 zeros.
+  const exact = usage.spend !== undefined && billed > 0;
+  const spend = usage.spend;
 
-  // Frame charge is measured, never estimated: frames x the published rate.
-  const samUsd = round((frames / 1000) * SAM_USD_PER_1000_FRAMES, 3);
+  // Frame charge: the ledger's own figure when the caller read `spend`, else
+  // the old derivation - frames x the published rate, never estimated twice.
+  const samUsd = exact
+    ? round(spend?.samUsd ?? 0, 3)
+    : round((frames / 1000) * SAM_USD_PER_1000_FRAMES, 3);
+  const samFrames = exact ? Math.max(0, spend?.frames ?? frames) : frames;
 
-  // Live and billed: trust the receipt, which already contains both legs.
-  // Fixture or never-finished: the frame charge is all we can honestly claim.
-  const totalUsd = simulated ? samUsd : billed > 0 ? Math.max(billed, samUsd) : samUsd;
-  const sparkUsd = round(totalUsd - samUsd, 3);
+  let totalUsd: number;
+  let sparkUsd: number;
+  if (exact) {
+    // Every row was written when its request was charged, so the parts add up
+    // with no residual and no max() reconciliation.
+    sparkUsd = round(spend?.sparkUsd ?? Math.max(0, billed - samUsd), 3);
+    totalUsd = round(samUsd + sparkUsd, 3);
+  } else if (simulated) {
+    totalUsd = samUsd; // projections never mix with real spend
+    sparkUsd = 0;
+  } else if (billed > 0) {
+    // Live and billed without a split: trust the receipt over the estimate.
+    totalUsd = Math.max(billed, samUsd);
+    sparkUsd = round(totalUsd - samUsd, 3);
+  } else {
+    totalUsd = samUsd; // known frames, no bill recorded: the frame charge is all we can claim
+    sparkUsd = 0;
+  }
 
   const distanceM = usage.distanceM && usage.distanceM > 0 ? usage.distanceM : null;
   const perKmUsd = distanceM ? round(totalUsd / (distanceM / 1000), 3) : null;
@@ -84,17 +113,16 @@ export function computeAuditCost(usage: AuditUsage): AuditCost {
       label: 'SAM 3.1',
       detail: simulated
         ? `${frames} frames · ${usd(SAM_USD_PER_1000_FRAMES, 2)}/1k applied`
-        : `${frames} frames @ ${usd(SAM_USD_PER_1000_FRAMES, 2)} / 1,000`,
+        : `${samFrames} frames @ ${usd(SAM_USD_PER_1000_FRAMES, 2)} / 1,000`,
       usd: samUsd,
     },
     {
       label: 'Muse Spark',
       detail: simulated
         ? 'recorded fixtures · no API call'
-        // Tokens are tallied per process, not per job, so this is the bill
-        // minus the frame charge rather than a token count - which is exactly
-        // what it is, and does not imply a precision we do not have.
-        : 'billed, less the frame charge',
+        : exact && (spend?.tokensIn || spend?.tokensOut)
+          ? `${count(spend?.tokensIn)} in / ${count(spend?.tokensOut)} out tokens`
+          : 'billed, less the frame charge',
       usd: sparkUsd,
     },
   ];
@@ -109,6 +137,11 @@ export function computeAuditCost(usage: AuditUsage): AuditCost {
     simulated,
     projected,
   };
+}
+
+/** 12480 -> "12,480"; the token line should read like a receipt, not a float. */
+function count(n: number | undefined): string {
+  return (n ?? 0).toLocaleString('en-US');
 }
 
 function round(n: number, dp: number): number {

@@ -104,6 +104,7 @@ export async function classifyTrack(opts: {
     framePath,
     prompt: buildClassificationPrompt(),
     seed: hashSeed(jobId, track.best.frameIndex, track.objectId),
+    jobId,
   });
 
   // The classifier's reject: an intact cover, plate or marking it refused to

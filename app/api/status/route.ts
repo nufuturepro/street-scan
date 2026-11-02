@@ -1,6 +1,6 @@
 import { probeLive, costTally } from '@/lib/meta';
 import { clientMode } from '@/lib/config';
-import { listJobs } from '@/lib/repo';
+import { allSpend } from '@/lib/spend';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +28,11 @@ export async function GET() {
 
   const cost = costTally();
 
-  // The tally only knows what this process has spent, so a restart used to
-  // reset the pill to $0.000 while the credit had already been consumed.
-  // Report whichever is larger: the session tally covers work in flight,
-  // the persisted job costs cover everything billed before the restart.
-  const persisted = listJobs().reduce((sum, j) => sum + (j.costEstimateUsd || 0), 0);
+  // The lifetime ledger, not the session tally: every billed event has a row
+  // written when it was charged, so a restart can no longer reset the pill to
+  // $0.000 while the credit has already been consumed. The tally fields stay
+  // as the since-restart detail only.
+  const lifetime = allSpend();
 
   return Response.json({
     mode,
@@ -47,14 +47,15 @@ export async function GET() {
           }
         : { blocked: false },
     cost: {
-      frames: cost.frames,
-      requests: cost.requests,
-      usd: Number(Math.max(cost.totalUsd, persisted).toFixed(4)),
-      samUsd: Number(cost.usd.toFixed(4)),
-      classUsd: Number(cost.classUsd.toFixed(4)),
-      classCalls: cost.classCalls,
-      tokensIn: cost.tokensIn,
-      tokensOut: cost.tokensOut,
+      frames: lifetime.frames,
+      requests: lifetime.requests,
+      usd: lifetime.usd,
+      samUsd: lifetime.samUsd,
+      classUsd: lifetime.sparkUsd,
+      classCalls: lifetime.classCalls,
+      tokensIn: lifetime.tokensIn,
+      tokensOut: lifetime.tokensOut,
+      // fixtures are free and only ever happen in this process: session by nature
       fixtureCalls: cost.fixtureCalls,
       creditUsd: 150,
     },

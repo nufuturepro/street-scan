@@ -11,6 +11,7 @@ import {
 import type { Classification, HazardType, SamFrame } from './types';
 import { HAZARD_TYPES } from './taxonomy';
 import { buildFixtureClassification, streamFixtureFrames } from './fixtures';
+import { recordSpend } from './spend';
 
 /**
  * The Meta Model API boundary.
@@ -41,6 +42,8 @@ export type SegmentRequest = {
   onFrame: (f: SamFrame) => void;
   /** called when a frame range is billed, so the tally is honest */
   onBilled?: (frames: number) => void;
+  /** audit these frames belong to; the spend row hangs off it */
+  jobId?: number;
 };
 
 export type ClassifyRequest = {
@@ -49,6 +52,8 @@ export type ClassifyRequest = {
   prompt: string;
   /** used by the fixture path to stay deterministic */
   seed: number;
+  /** audit this classification belongs to; the spend row hangs off it */
+  jobId?: number;
 };
 
 export interface MetaClient {
@@ -97,11 +102,19 @@ export function resetTally() {
   tally.classUsd = 0;
 }
 
-function recordBilled(n: number, onBilled?: (n: number) => void) {
+/**
+ * SAM charges the moment the stream bills a range - so the ledger row is
+ * written here, at billing time, where a crash, a re-run or a deleted job
+ * cannot lose it. `n` is the provider's own usage.video_frames_processed when
+ * the response carries it, the chunk's frame count otherwise.
+ */
+function recordBilled(n: number, jobId: number | undefined, detail: string, onBilled?: (n: number) => void) {
   const billed = Math.max(n, SAM_MIN_BILLED_FRAMES);
+  const usd = (billed / 1000) * SAM_USD_PER_1000_FRAMES;
+  recordSpend({ jobId, kind: 'sam', frames: billed, usd, detail });
   tally.frames += billed;
   tally.requests += 1;
-  tally.usd += (billed / 1000) * SAM_USD_PER_1000_FRAMES;
+  tally.usd += usd;
   onBilled?.(billed);
 }
 
@@ -112,13 +125,16 @@ type SparkUsage = {
   completion_tokens?: number;
 };
 
-function recordClassified(usage: SparkUsage | undefined) {
+/** The real token bill for one classification - ledgered and tallied together. */
+function recordClassified(usage: SparkUsage | undefined, jobId: number | undefined, detail: string) {
   const inTok = Number(usage?.input_tokens ?? usage?.prompt_tokens ?? 0) || 0;
   const outTok = Number(usage?.output_tokens ?? usage?.completion_tokens ?? 0) || 0;
+  const usd = (inTok / 1e6) * SPARK_USD_PER_1M_IN + (outTok / 1e6) * SPARK_USD_PER_1M_OUT;
+  recordSpend({ jobId, kind: 'spark', tokensIn: inTok, tokensOut: outTok, usd, detail });
   tally.classCalls += 1;
   tally.tokensIn += inTok;
   tally.tokensOut += outTok;
-  tally.classUsd += (inTok / 1e6) * SPARK_USD_PER_1M_IN + (outTok / 1e6) * SPARK_USD_PER_1M_OUT;
+  tally.classUsd += usd;
 }
 
 type ApiError = Error & { status?: number; body?: string };
@@ -194,7 +210,8 @@ class LiveClient implements MetaClient {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let frames = 0;
+    /** the provider's own billed count, when the stream reports one */
+    let usageFrames = 0;
 
     const handleLine = (line: string) => {
       const trimmed = line.trim();
@@ -207,11 +224,19 @@ class LiveClient implements MetaClient {
       } catch {
         return;
       }
+      // The exact frame charge, when the stream says it: the response's
+      // usage.video_frames_processed is what Meta bills this request for.
+      // Our frame count is only a fallback for a stream that omits it.
+      const ev = event as {
+        usage?: { video_frames_processed?: number };
+        response?: { usage?: { video_frames_processed?: number } };
+      };
+      const reported = Number(ev.usage?.video_frames_processed ?? ev.response?.usage?.video_frames_processed ?? 0);
+      if (Number.isFinite(reported) && reported > usageFrames) usageFrames = reported;
       const delta = (event as { delta?: unknown }).delta;
       const fromText =
         typeof delta === 'string' && delta.includes('<|box;') ? parseSamText(delta) : [];
       for (const frame of fromText.length ? fromText : extractFrames(event)) {
-        frames += 1;
         req.onFrame({
           frameIndex: req.globalStartFrame + frame.frameIndex,
           objectId: frame.objectId,
@@ -232,8 +257,19 @@ class LiveClient implements MetaClient {
     if (buffer.trim()) handleLine(buffer);
 
     // SAM bills per video frame processed, not per match: 724 frames cost the
-    // same whether 3 or 300 of them matched. The floor still applies.
-    recordBilled(Math.max(frames, req.frameCount), req.onBilled);
+    // same whether 3 or 300 of them matched. The response's own
+    // usage.video_frames_processed is authoritative when it arrives; the
+    // chunk's frame count is the fallback. The floor still applies.
+    // The detail tags which source produced the number - the usage probe and
+    // any later audit read it back to know whether parsing worked.
+    recordBilled(
+      usageFrames > 0 ? usageFrames : req.frameCount,
+      req.jobId,
+      `chunk ${req.chunkId} / prompt "${req.prompt}" - ${
+        usageFrames > 0 ? 'provider usage' : 'frame-count estimate'
+      }`,
+      req.onBilled
+    );
   }
 
   async classify(req: ClassifyRequest): Promise<Classification> {
@@ -256,7 +292,7 @@ class LiveClient implements MetaClient {
       }),
     });
     const data = (await res.json()) as { output?: unknown; usage?: SparkUsage };
-    recordClassified(data.usage);
+    recordClassified(data.usage, req.jobId, `classify ${path.basename(req.framePath)}`);
     return coerceClassification(data);
   }
 }
