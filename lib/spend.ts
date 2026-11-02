@@ -1,4 +1,5 @@
 import { db } from './db';
+import type { SpendTotals } from './types';
 
 /**
  * The spend ledger: one row per billed event, written at the moment money
@@ -25,17 +26,8 @@ export type SpendEntry = {
   detail?: string;
 };
 
-export type SpendTotals = {
-  usd: number;
-  samUsd: number;
-  sparkUsd: number;
-  /** billed frames - only post-ledger SAM rows know theirs; seed rows carry 0 */
-  frames: number;
-  requests: number;
-  classCalls: number;
-  tokensIn: number;
-  tokensOut: number;
-};
+// SpendTotals lives in lib/types.ts so client components can render it
+// without importing this server module; one definition, both sides.
 
 export function recordSpend(entry: SpendEntry): void {
   db()
