@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import "./globals.css";
 import StatusPill from "@/components/StatusPill";
 
@@ -16,7 +17,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-zinc-800 bg-zinc-950/95 sticky top-0 z-[500]">
           <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-6">
             <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-              <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
+              <Image
+                src="/streetscan-logo.png"
+                alt=""
+                width={24}
+                height={24}
+                className="shrink-0"
+              />
               StreetScan
             </Link>
             <nav className="flex items-center gap-4 text-sm text-zinc-400">
