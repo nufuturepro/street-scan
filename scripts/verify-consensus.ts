@@ -165,6 +165,25 @@ assert(
   `two passes on the same sidewalk defect still corroborate - got ${sameSidewalk.length}/${sameSidewalk[0]?.state}`
 );
 
+// A rejected sighting is not a witness: a reviewer who threw out one pass's
+// false positive must not still have it corroborate (or dispute) the other
+// pass's real hazard.
+const rejectedWitness = groupHazards([
+  det({ id: 1, jobId: 4, east: 0, type: 'pothole', severity: 4 }),
+  { ...det({ id: 2, jobId: 6, east: 8, type: 'pothole' }), reviewStatus: 'rejected' },
+]);
+assert(
+  rejectedWitness.length === 1 &&
+    rejectedWitness[0].passes === 1 &&
+    rejectedWitness[0].state === 'single' &&
+    rejectedWitness[0].detectionIds.join(',') === '1',
+  `a rejected sighting corroborates nothing - got ${rejectedWitness.length} group(s), passes ${rejectedWitness[0]?.passes}, ids ${rejectedWitness[0]?.detectionIds.join(',')}`
+);
+assert(
+  corroboratedIds(rejectedWitness).length === 0,
+  'a rejected sighting earns no automatic verification'
+);
+
 const noCoord = groupHazards([
   det({ id: 1, jobId: 4, east: 0 }),
   { ...det({ id: 2, jobId: 6, east: 5 }), lat: null, lon: null },

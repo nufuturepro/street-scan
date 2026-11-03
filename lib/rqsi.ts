@@ -199,7 +199,14 @@ export function buildRqsi(opts: {
   // Street grade, street findings only. A sidewalk defect is real and gets
   // its own row on the dashboard, but charging it to a driving segment would
   // turn a smooth street red for something no tyre ever touched.
-  const detections = opts.detections.filter((d) => d.surface !== 'sidewalk');
+  //
+  // A rejected detection is not part of the road at all: a reviewer looked and
+  // said so, so it cannot lower a grade. Filtering here (rather than at each
+  // call site) is what keeps the dashboard, the audit page and both exports
+  // from disagreeing about the same street.
+  const detections = opts.detections.filter(
+    (d) => d.surface !== 'sidewalk' && d.reviewStatus !== 'rejected'
+  );
   const edges = splitRoute(track.samples);
   if (!edges.length) return [];
 

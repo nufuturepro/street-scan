@@ -22,7 +22,12 @@ export async function GET(req: Request, ctx: Ctx) {
 
   const url = new URL(req.url);
   const format = (url.searchParams.get('format') ?? 'geojson').toLowerCase();
-  const detections = listDetections(jobId);
+  // Rejected false positives never leave this app: they are not hazards, so
+  // they are not in a CSV, a GeoJSON file, or a work-order payload a city
+  // could dispatch from.
+  const detections = listDetections(jobId).filter(
+    (d) => d.reviewStatus !== 'rejected'
+  );
   const profile = url.searchParams.get('profile') ?? undefined;
 
   if (format === 'csv') {

@@ -292,26 +292,75 @@ export function promoteVerified(ids: number[]): number {
   return Number(res.changes);
 }
 
+/**
+ * What a human is allowed to correct on a detection.
+ *
+ * Type and severity are in here because they are the fields that make a work
+ * order wrong in a way no pin fix can repair: a manhole typed as a pothole
+ * ships the city the wrong service code and charges a false defect to the
+ * street's grade. serviceCode/priority ride along so a reclassification cannot
+ * leave the export describing the old class.
+ */
+export type DetectionEdit = Partial<
+  Pick<
+    Detection,
+    | 'lat'
+    | 'lon'
+    | 'street'
+    | 'crossStreet'
+    | 'hazardType'
+    | 'severity'
+    | 'serviceCode'
+    | 'priority'
+    | 'needsReview'
+  >
+>;
+
+/** camelCase patch key -> column. Order is the order they are written in. */
+const EDIT_COLUMNS: Array<[keyof DetectionEdit, string]> = [
+  ['lat', 'lat'],
+  ['lon', 'lon'],
+  ['street', 'street'],
+  ['crossStreet', 'cross_street'],
+  ['hazardType', 'hazard_type'],
+  ['severity', 'severity'],
+  ['serviceCode', 'service_code'],
+  ['priority', 'priority'],
+];
+
+/**
+ * One write for a status change and any corrections that came with it.
+ *
+ * Built as dynamic SQL because the fields are optional and a reviewer usually
+ * changes one: COALESCE over eight columns would still write every one of
+ * them, which is how a "reject" click used to be able to overwrite a pin.
+ */
 export function updateDetectionStatus(
   id: number,
   status: Detection['reviewStatus'],
-  patch?: Partial<Pick<Detection, 'lat' | 'lon' | 'street' | 'crossStreet' | 'needsReview'>>
+  patch: DetectionEdit = {}
 ): void {
+  const sets: string[] = ['review_status = ?'];
+  const values: Array<string | number | null> = [status];
+
+  for (const [key, column] of EDIT_COLUMNS) {
+    // undefined = "leave it alone"; null = "clear it". A reviewer who typed
+    // the wrong cross street has to be able to blank it again, and an empty
+    // string would be a street name that is not a name.
+    if (!(key in patch)) continue;
+    const value = patch[key];
+    if (value === undefined) continue;
+    sets.push(`${column} = ?`);
+    values.push(value as string | number | null);
+  }
+  if (patch.needsReview !== undefined) {
+    sets.push('needs_review = ?');
+    values.push(patch.needsReview ? 1 : 0);
+  }
+
   db()
-    .prepare(
-      'UPDATE detections SET review_status = ?, lat = COALESCE(?, lat), lon = COALESCE(?, lon), ' +
-        'street = COALESCE(?, street), cross_street = COALESCE(?, cross_street), ' +
-        'needs_review = COALESCE(?, needs_review) WHERE id = ?'
-    )
-    .run(
-      status,
-      patch?.lat ?? null,
-      patch?.lon ?? null,
-      patch?.street ?? null,
-      patch?.crossStreet ?? null,
-      patch?.needsReview === undefined ? null : patch.needsReview ? 1 : 0,
-      id
-    );
+    .prepare(`UPDATE detections SET ${sets.join(', ')} WHERE id = ?`)
+    .run(...values, id);
 }
 
 export function detectionCounts(jobId: number): Record<string, number> {

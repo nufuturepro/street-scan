@@ -211,6 +211,22 @@ assert(
   `a pin just past the ${SEGMENT_OFF_ROUTE_M} m limit is dropped, not blamed on a segment`
 );
 
+// A rejected false positive leaves no trace on the grade. Without this, a
+// reviewer's "not a hazard" verdict would only hide a row while still turning
+// the street red and dragging its RQSI down.
+const severe: Detection[] = [det({ along: 10, id: 7, severity: 5 })];
+assert(
+  run(75, severe).some((s) => s.grade === 'red'),
+  'a severity-5 hazard reddens its stretch'
+);
+const rejected: Detection[] = [{ ...severe[0], reviewStatus: 'rejected' }];
+assert(
+  run(75, rejected).every(
+    (s) => s.grade === 'green' && s.rqsi === 100 && s.detectionIds.length === 0
+  ),
+  'the same entry marked not-a-hazard leaves the stretch clean'
+);
+
 const multiple = run(75, [
   det({ along: 5, id: 1 }),
   det({ along: 40, id: 2 }),

@@ -73,6 +73,10 @@ export function groupHazards(
 
   for (const d of detections) {
     if (d.lat == null || d.lon == null) continue;
+    // A rejected sighting is not a witness. Grouping it would let a thrown-out
+    // false positive corroborate (or dispute) a real hazard in another pass -
+    // the one way a reviewer's verdict could still change a grade.
+    if (d.reviewStatus === 'rejected') continue;
     const point = { lat: d.lat, lon: d.lon };
 
     const [row, col] = cellKey(point.lat, point.lon, radiusM)

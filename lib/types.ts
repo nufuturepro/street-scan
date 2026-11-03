@@ -28,7 +28,15 @@ export type Detection = {
   crossStreet: string | null;
   description: string;
   needsReview: boolean;
-  reviewStatus: 'detected' | 'verified' | 'filed';
+  /**
+   * 'rejected' is the human's "this is not a hazard" - a false positive the
+   * detector found and a reviewer threw out. It is a status rather than a
+   * delete: the row stays, its still and footage stay, and rejecting can be
+   * undone. Rejected entries are excluded from route grades, cross-audit
+   * corroboration and every export, so a thrown-out detection cannot skew a
+   * score or reach a city.
+   */
+  reviewStatus: 'detected' | 'verified' | 'filed' | 'rejected';
   /** representative mask, normalized polygon */
   polygon: Polygon;
   /** frame index of the representative mask inside the analysis video */

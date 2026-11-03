@@ -84,6 +84,10 @@ function passFilters(
   activeType: string | null
 ): boolean {
   const minSev = Number(f.minSeverity);
+  // A rejected entry is out of the work queue entirely - it is not a hazard,
+  // so it must not be counted, mapped or filed. It stays visible (and
+  // restorable) on its own audit page, which is where the verdict was made.
+  if (d.reviewStatus === 'rejected') return false;
   if (activeType && d.hazardType !== activeType) return false;
   if (f.status !== 'all' && d.reviewStatus !== f.status) return false;
   // 'street' is the default view: sidewalk findings are kept and shown,

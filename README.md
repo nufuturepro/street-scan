@@ -62,7 +62,9 @@ What the app does, function by function - the operator's view. Each one says whe
   street says so.
 - Every row carries a severity badge, **the frame the hazard was found on**, its street, a
   corroboration badge (`2 passes`, or `disputed` when a second audit saw the same spot and
-  disagreed), and a status pill you click to advance `detected → verified → filed`.
+  disagreed), and a status pill you click to change `detected → verified → filed → detected` -
+  the wrap is the undo. Entries a reviewer rejected are **not** in this queue at all: they are
+  not hazards, so they are not counted, mapped or filed (see section 5).
 - Sidewalk findings wear a `walk` chip and the breakdown splits `18 street - 4 on sidewalk`:
   kept, visible, never passed off as street defects.
 - The breakdown counts hazards by type and calls out how many are still waiting on a GPS fix.
@@ -94,9 +96,26 @@ What the app does, function by function - the operator's view. Each one says whe
 - The video jumps to that hazard's second, and its mask stays painted for ~2.6s around the
   sample frame. The timeline below carries one severity-coloured tick per hazard - click to
   jump.
-- Beside it sits the live Open311 payload: correct the latitude, longitude or street, then
-  **Apply corrections** writes it back and **Copy JSON** takes it elsewhere. **full page ↗**
-  opens the dedicated inspect view; **✕ Close** hands the slot back to the map.
+- Beside it sits the live Open311 payload: correct the latitude, longitude, street, cross
+  street - or **reclassify the hazard's type and severity** - then **Apply corrections** writes
+  it back and the payload redraws with the corrected service code and priority. An emptied
+  cross street **clears** a wrong one (omitting the field leaves it alone). **Copy JSON**
+  takes it elsewhere. **full page ↗** opens the dedicated inspect view; **✕ Close** hands the
+  slot back to the map.
+- Type and severity are editable because they are the fields a pin fix cannot repair: a manhole
+  the detector called a pothole ships the city the wrong service code, ranks at the wrong
+  priority, and charges a defect to a street that does not have one.
+
+### 5b. Correct or throw out an entry - `/inspect/:id`
+
+- **Undo** walks a `verified` or `filed` detection back to `detected`. Verify and File used to be
+  one-way in practice, so a misclick on the wrong row was permanent.
+- **Not a hazard** rejects a false positive. The row keeps its still and its footage - rejecting
+  is a decision, not a delete - but it leaves the route grade, the cross-audit corroboration and
+  every export (`csv`, `geojson`, `open311`, `rqsi`), so a thrown-out detection cannot skew a
+  score or reach a city. **Restore** puts it back.
+- Both live on every queue row, next to Verify and File, and the audit header counts them:
+  `12 detected · 3 verified · 1 filed` plus a red `2 rejected` when there are any.
 
 ### 6. Read the street - the map
 
@@ -117,7 +136,8 @@ What the app does, function by function - the operator's view. Each one says whe
 
 ### 7. Grade the route (RQSI)
 
-- Every **street** detection is snapped to a 100m window of the GPS track: density
+- Every **street** detection is snapped to a 100m window of the GPS track (rejected ones are
+  not part of the road at all, so they never enter the arithmetic): density
   (severity-weighted defects per 100m) becomes `RQSI = 100 − density × K`, then a rubric
   grade - **red** for any severity ≥ 4 or a blocked-lane/cave-in ≥ 3, **yellow** for
   severity ≥ 2 or cracking, **green** when clean. Sidewalk findings are graded apart: a
@@ -284,7 +304,7 @@ and only a corroborated pair - never a disputed one - earns a verification.
 | `POST /api/jobs/:id/process` | enqueues a scan (JSON, idempotent) - the queue runs it; any page reads progress from the job/dashboard GETs |
 | `GET /api/dashboard` | every job + detection + hazard group + RQSI segment + cross-audit intersection, plus the live queue snapshot, in one request |
 | `GET /api/jobs/:id` | job + detections + counts + GPS + cost + live queue progress |
-| `PATCH /api/detections/:id` | the human verification step: status, manual pin, street correction |
+| `PATCH /api/detections/:id` | the human correction step: status (including `detected` = undo, and `rejected` = not a hazard), manual pin, street/cross-street, hazard type + severity (service code and priority follow the reclassification) |
 | `GET /api/detections/:id/still` | the frame a hazard was found on - cut from playback on first request, then cached |
 | `GET /api/jobs/:id/export?format=` | `csv` · `geojson` · `open311` · `rqsi` |
 | `GET /api/files/:id/:name` | Range-aware video streaming (206) so scrubbing works |

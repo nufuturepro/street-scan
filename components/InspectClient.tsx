@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import VideoPane from './VideoPane';
 import DetectionList from './DetectionList';
-import WorkOrderPanel from './WorkOrderPanel';
+import WorkOrderPanel, { type DetectionEditPatch } from './WorkOrderPanel';
 import CostMeter from './CostMeter';
 import type { Detection, Job, JobProgress, SpendTotals } from '@/lib/types';
 
@@ -140,10 +140,7 @@ export default function InspectClient({
     await refresh();
   };
 
-  const patch = async (
-    detectionId: number,
-    body: { lat?: number; lon?: number; street?: string }
-  ) => {
+  const patch = async (detectionId: number, body: DetectionEditPatch) => {
     await fetch(`/api/detections/${detectionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -158,8 +155,13 @@ export default function InspectClient({
     progress != null && progress.stage !== 'done' && progress.stage !== 'failed';
   const playback = data?.job.playbackPath ? `/api/files/${id}/playback.mp4` : null;
 
-  const counts = data?.counts ?? { detected: 0, verified: 0, filed: 0 };
-  const needsReview = detections.filter((d) => d.needsReview).length;
+  const counts = data?.counts ?? { detected: 0, verified: 0, filed: 0, rejected: 0 };
+  // Rejected entries are looking for nothing: they are a verdict already made,
+  // so they must not pad the "need review" badge.
+  const needsReview = detections.filter(
+    (d) => d.needsReview && d.reviewStatus !== 'rejected'
+  ).length;
+  const rejected = counts.rejected ?? 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -174,6 +176,14 @@ export default function InspectClient({
           <span className="rounded border border-zinc-700 px-2 py-1 tabular-nums text-zinc-400">
             {counts.detected} detected · {counts.verified} verified · {counts.filed} filed
           </span>
+          {rejected > 0 && (
+            <span
+              className="rounded border border-red-800 bg-red-950 px-2 py-1 tabular-nums text-red-300"
+              title="marked not a hazard - excluded from grades and exports"
+            >
+              {rejected} rejected
+            </span>
+          )}
           {needsReview > 0 && (
             <span className="rounded border border-amber-700 bg-amber-950 px-2 py-1 text-amber-300">
               {needsReview} need review

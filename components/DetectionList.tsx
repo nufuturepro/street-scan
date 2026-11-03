@@ -56,7 +56,7 @@ export default function DetectionList({ detections, activeId, onSelect, onStatus
                 active
                   ? 'border-amber-500 bg-zinc-900'
                   : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-700'
-              }`}
+              } ${d.reviewStatus === 'rejected' ? 'opacity-60' : ''}`}
             >
               <div className="flex items-center gap-2">
                 <span
@@ -80,14 +80,17 @@ export default function DetectionList({ detections, activeId, onSelect, onStatus
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {d.needsReview && <Flag tone="amber">needs review</Flag>}
+                {d.reviewStatus === 'rejected' && <Flag tone="red">not a hazard</Flag>}
+                {d.needsReview && d.reviewStatus !== 'rejected' && (
+                  <Flag tone="amber">needs review</Flag>
+                )}
                 {d.osmDisagrees && <Flag tone="red">map disagrees</Flag>}
                 {(d.lat == null || d.lon == null) && <Flag tone="red">no geo</Flag>}
                 <Flag tone="zinc">{d.priority}</Flag>
                 <Flag tone="zinc">{d.serviceCode}</Flag>
               </div>
 
-              <div className="mt-2.5 flex gap-2">
+              <div className="mt-2.5 flex flex-wrap gap-2">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -96,18 +99,65 @@ export default function DetectionList({ detections, activeId, onSelect, onStatus
                   disabled={d.reviewStatus !== 'detected'}
                   className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-emerald-600 hover:text-emerald-300 disabled:opacity-35 disabled:pointer-events-none"
                 >
-                  {d.reviewStatus === 'detected' ? 'Verify' : 'Verified'}
+                  {d.reviewStatus === 'detected' || d.reviewStatus === 'rejected'
+                    ? 'Verify'
+                    : 'Verified'}
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onStatus(d.id!, 'filed');
                   }}
-                  disabled={d.reviewStatus === 'filed'}
+                  disabled={d.reviewStatus === 'filed' || d.reviewStatus === 'rejected'}
                   className="rounded border border-amber-700 bg-amber-950 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-900 disabled:opacity-35 disabled:pointer-events-none"
                 >
                   {d.reviewStatus === 'filed' ? 'Filed' : 'File work order'}
                 </button>
+                {/*
+                  Undo, not a status cycle: Verify and File are one-way in
+                  practice until this button existed, so a misclick on the
+                  wrong row was permanent. Both land back on 'detected'.
+                */}
+                {(d.reviewStatus === 'verified' || d.reviewStatus === 'filed') && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStatus(d.id!, 'detected');
+                    }}
+                    title="walk the status back to detected"
+                    className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  >
+                    Undo
+                  </button>
+                )}
+                {/*
+                  The false-positive verdict. A rejected row keeps its still
+                  and its footage - rejecting is a decision, not a delete -
+                  but it leaves the grades, the corroboration and the export.
+                */}
+                {d.reviewStatus === 'rejected' ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStatus(d.id!, 'detected');
+                    }}
+                    title="put this hazard back in the queue"
+                    className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-emerald-600 hover:text-emerald-300"
+                  >
+                    Restore
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStatus(d.id!, 'rejected');
+                    }}
+                    title="not a real hazard - drop it from grades and exports"
+                    className="rounded border border-red-800 px-2 py-1 text-[11px] text-red-300 hover:bg-red-950"
+                  >
+                    Not a hazard
+                  </button>
+                )}
               </div>
             </div>
           </li>
