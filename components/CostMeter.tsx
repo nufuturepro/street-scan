@@ -111,7 +111,8 @@ export default function CostMeter({
             ? 'No bill recorded for this run, so the total is the frame charge only.'
             : 'Billed: frame charge plus classification. Transcoding is local and free.'}{' '}
         Rates: SAM {usd(SAM_USD_PER_1000_FRAMES, 2)}/1k frames · Spark{' '}
-        {usd(SPARK_USD_PER_1M_IN, 2)}/1M in, {usd(SPARK_USD_PER_1M_OUT, 2)}/1M out.
+        {usd(SPARK_USD_PER_1M_IN, 2)}/1M in, {usd(SPARK_USD_PER_1M_OUT, 2)}/1M out{' '}
+        — estimates at those rates, not an invoice.
       </p>
     </div>
   );

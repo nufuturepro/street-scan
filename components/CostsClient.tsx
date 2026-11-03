@@ -468,6 +468,12 @@ export default function CostsClient() {
             Analysis runs on a separate 10fps copy, so a 10-minute drive bills
             6,000 frames instead of 18,000.
           </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-amber-600/90">
+            Estimate, not an invoice: every figure here is computed from
+            today&apos;s published rates — which Meta can change — and from
+            the ledger&apos;s own records. Treat the numbers as projections of
+            what gets charged, not receipts.
+          </p>
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
