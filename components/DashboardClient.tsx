@@ -5,7 +5,15 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import VideoPane from './VideoPane';
 import WorkOrderPanel from './WorkOrderPanel';
-import type { Detection, HazardGroup, Job, JobProgress, RouteSegment } from '@/lib/types';
+import type {
+  Detection,
+  HazardGroup,
+  Job,
+  JobProgress,
+  RouteCrossing,
+  RouteSegment,
+  RqsiGrade,
+} from '@/lib/types';
 import { GRADE_COLOR, GRADE_LABEL, summarize } from '@/lib/rqsi';
 import { SEVERITY_COLORS } from './mask';
 import StillPopup from './StillPopup';
@@ -49,6 +57,12 @@ function Select({
   );
 }
 
+/** ms → "1:33", for the watch links on an intersection. */
+function clock(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 /**
  * Dispatch dashboard: where the hazards are, what state each work order is in,
  * and the export that hands it to a real crew.
@@ -90,6 +104,11 @@ export default function DashboardClient() {
   /** `${jobId}:${index}` of the stretch the Route quality card is detailing; null = whole route. */
   const [segmentKey, setSegmentKey] = useState<string | null>(null);
   const [hazards, setHazards] = useState<HazardGroup[]>([]);
+  // Where two audits' routes meet - the Intersections card's rows, each with
+  // a link into every pass's footage at that spot.
+  const [crossings, setCrossings] = useState<RouteCrossing[]>([]);
+  /** Map legend grade filter: null = draw every grade. */
+  const [gradeFilter, setGradeFilter] = useState<RqsiGrade | null>(null);
   // The scan queue's live snapshot - which jobs are running or waiting, and
   // how far along each is, without a page open on any of them.
   const [scanning, setScanning] = useState<Array<{ jobId: number; progress: JobProgress }>>([]);
@@ -121,6 +140,15 @@ export default function DashboardClient() {
     id: number;
     rect: { left: number; top: number; width: number };
   } | null>(null);
+  // The queue list itself, so the stretch strip can scroll a member row into
+  // view: the map knows which hazards a stretch holds, and the list has to
+  // show them without the user hunting through 63 rows.
+  const queueRef = useRef<HTMLUListElement>(null);
+  const scrollToStretchMember = () => {
+    queueRef.current
+      ?.querySelector('[data-seg-member]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
 
   const load = async () => {
     try {
@@ -131,6 +159,7 @@ export default function DashboardClient() {
         detections: Detection[];
         segments?: RouteSegment[];
         hazards?: HazardGroup[];
+        crossings?: RouteCrossing[];
         mode?: string;
         active?: Array<{ jobId: number; progress: JobProgress }>;
       };
@@ -141,6 +170,7 @@ export default function DashboardClient() {
       // Absent only if an older server is answering; the map then draws no route.
       setSegments(data.segments ?? []);
       setHazards(data.hazards ?? []);
+      setCrossings(data.crossings ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -280,6 +310,16 @@ export default function DashboardClient() {
   )
     .map(([k, n]) => `${n} ${k.replace('_', ' ')}`)
     .join(' · ');
+  // The strip under Queue: a button when there is something to scroll to,
+  // plain text when there is nothing (no members, or all of them filtered out).
+  const stretchText =
+    segmentMembers.length === 0
+      ? null
+      : `${segmentMembers.length} in this stretch: ${segmentTypeSummary}${
+          segmentVisible < segmentMembers.length
+            ? ` · ${segmentMembers.length - segmentVisible} hidden by filters`
+            : ''
+        }`;
 
   // Which physical hazard each row belongs to, so a detection a second audit
   // also saw can say so in the queue. Not a useMemo: `hazards` is reassigned by
@@ -454,6 +494,8 @@ export default function DashboardClient() {
               activeId={activeId}
               onSelect={setActive}
               selectedKey={segmentKey}
+              gradeFilter={gradeFilter}
+              onGradeFilter={setGradeFilter}
               onSelectSegment={(s) => {
                 const k = `${s.jobId}:${s.index}`;
                 setSegmentKey((prev) => (prev === k ? null : k));
@@ -543,18 +585,27 @@ export default function DashboardClient() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
               Queue
             </h2>
-            {selectedSegment && (
-              <p className="mt-1 text-[11px] text-amber-400/90">
-                {segmentMembers.length === 0
-                  ? 'No hazards in this stretch.'
-                  : `${segmentMembers.length} in this stretch: ${segmentTypeSummary}${
-                      segmentVisible < segmentMembers.length
-                        ? ` · ${segmentMembers.length - segmentVisible} hidden by filters`
-                        : ''
-                    }`}
-              </p>
-            )}
-            <ul className="mt-2 max-h-72 divide-y divide-zinc-800 overflow-y-auto">
+            {selectedSegment &&
+              (stretchText ? (
+                <button
+                  type="button"
+                  onClick={scrollToStretchMember}
+                  disabled={segmentVisible === 0}
+                  className="mt-1 block w-full text-left text-[11px] text-amber-400/90 hover:text-amber-300 disabled:text-zinc-600"
+                  title={
+                    segmentVisible === 0
+                      ? 'these rows are hidden by the active filters'
+                      : 'scroll the queue to the first one'
+                  }
+                >
+                  {stretchText} ↧
+                </button>
+              ) : (
+                <p className="mt-1 text-[11px] text-amber-400/90">
+                  No hazards in this stretch.
+                </p>
+              ))}
+            <ul ref={queueRef} className="mt-2 max-h-72 divide-y divide-zinc-800 overflow-y-auto">
               {filtered.length === 0 && (
                 <li className="py-6 text-center text-sm text-zinc-500">
                   Nothing matches these filters.
@@ -565,6 +616,7 @@ export default function DashboardClient() {
                 return (
                 <li
                   key={d.id}
+                  data-seg-member={segmentIds.has(d.id!) ? '' : undefined}
                   className={`flex items-center gap-2 py-2 ${
                     d.id === activeId ? 'bg-zinc-800/60 -mx-1 px-1 rounded' : ''
                   } ${
@@ -890,6 +942,87 @@ export default function DashboardClient() {
                   </p>
                 )}
               </>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              Intersections
+            </h2>
+            {crossings.length === 0 ? (
+              <p className="mt-2 text-xs text-zinc-500">
+                No two routes meet yet — drive the same street in a second
+                audit and every shared stretch lands here.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {crossings.map((x) => (
+                  <li
+                    key={x.key}
+                    className="rounded border border-zinc-800 bg-zinc-950/40 p-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSegmentKey(x.key)}
+                      className="w-full text-left"
+                      title="detail this stretch on the map"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="truncate text-zinc-300">
+                          {x.street ?? 'unnamed stretch'}
+                        </span>
+                        <span
+                          className={`ml-auto shrink-0 rounded border px-1 py-0.5 text-[9px] uppercase tracking-wide ${
+                            x.agree
+                              ? 'border-emerald-800 bg-emerald-950/60 text-emerald-400'
+                              : 'border-amber-700 bg-amber-950 text-amber-300'
+                          }`}
+                          title={
+                            x.agree
+                              ? 'every pass graded this stretch the same way'
+                              : 'the passes graded this stretch differently'
+                          }
+                        >
+                          {x.agree ? 'agree' : 'disagree'}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {x.jobs.map((j) => (
+                          <span
+                            key={j.jobId}
+                            className="rounded border border-zinc-700 px-1 py-0.5 text-[10px]"
+                            style={{ color: GRADE_COLOR[j.grade] }}
+                          >
+                            #{j.jobId} {GRADE_LABEL[j.grade]}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                    {/*
+                      Watch links open in a new tab: the dashboard stays put
+                      behind the footage, which is the point of comparing one
+                      pass against another.
+                    */}
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {x.jobs.map((j) => (
+                        <a
+                          key={j.jobId}
+                          href={`/inspect/${j.jobId}${
+                            j.tMs != null ? `?t=${j.tMs}` : ''
+                          }`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline"
+                          title={`watch audit #${j.jobId} at this crossing`}
+                        >
+                          ▶ #{j.jobId}
+                          {j.tMs != null ? ` @ ${clock(j.tMs)}` : ''}
+                        </a>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 

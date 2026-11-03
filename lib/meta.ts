@@ -12,6 +12,7 @@ import type { Classification, HazardType, SamFrame } from './types';
 import { HAZARD_TYPES } from './taxonomy';
 import { buildFixtureClassification, streamFixtureFrames } from './fixtures';
 import { recordSpend } from './spend';
+import { storedApiKey } from './settings';
 
 /**
  * The Meta Model API boundary.
@@ -65,8 +66,15 @@ export interface MetaClient {
 }
 
 function apiKey(): string {
-  const key = process.env.MODEL_API_KEY?.trim();
-  if (!key) throw new Error('MODEL_API_KEY is not set. Copy .env.example to .env.');
+  // A key pasted at /settings wins: the user just said so, and making them
+  // restart the container to agree with the form would be absurd. The
+  // environment stays as the deployment default underneath it.
+  const key = storedApiKey()?.trim() || process.env.MODEL_API_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      'MODEL_API_KEY is not set. Copy .env.example to .env, or paste one at /settings.'
+    );
+  }
   return key;
 }
 
@@ -625,7 +633,7 @@ export async function getMetaClient(): Promise<MetaClient> {
 /** Cheap pre-flight: is billing live yet? Used by the UI status pill. */
 export async function probeLive(): Promise<{ ok: boolean; detail: string }> {
   if (clientMode() === 'fixture') return { ok: false, detail: 'fixture mode forced' };
-  if (!existsSync('.env') && !process.env.MODEL_API_KEY) {
+  if (!existsSync('.env') && !process.env.MODEL_API_KEY && !storedApiKey()) {
     return { ok: false, detail: 'MODEL_API_KEY not set' };
   }
   try {

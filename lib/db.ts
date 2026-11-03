@@ -93,6 +93,14 @@ function open(): DatabaseSync {
       created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_spend_job ON spend(job_id);
+
+    -- App settings, so /settings can set the Model API key without a rebuild.
+    -- Values never leave the server: GET /api/settings reports only where a
+    -- key came from and its last four characters.
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   // Sidewalk findings used to be discarded at classification; now they are

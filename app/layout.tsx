@@ -26,6 +26,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/dashboard" className="hover:text-zinc-100 transition-colors">
                 Dispatch
               </Link>
+              <Link href="/settings" className="hover:text-zinc-100 transition-colors">
+                Settings
+              </Link>
             </nav>
             <div className="ml-auto">
               <StatusPill />

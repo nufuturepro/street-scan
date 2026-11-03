@@ -71,7 +71,12 @@ What the app does, function by function - the operator's view. Each one says whe
   others keep their full counts - picking one narrows the view instead of erasing its siblings.
 - Clicking an RQSI segment lines the queue up with the map: a strip under the Queue header says
   `N in this stretch: 1 pothole - 2 cracks` (and how many are hidden by active filters), and
-  every row that lives in the stretch gets an amber rail.
+  every row that lives in the stretch gets an amber rail. The strip is a button too - click it
+  and the queue scrolls to the first member row.
+- The **Intersections** card lists every place two audits' routes meet: the street, each pass's
+  own grade for the shared ground, and an agree/dispute badge, disputed first. Each row's
+  `▶ #4 @ 1:33` opens that audit's footage **at the shared spot** in a new tab, so a report can
+  be weighed against a second sighting; clicking the row itself details the stretch on the map.
 
 ### 4. Hover a row - the still popup
 
@@ -102,8 +107,10 @@ What the app does, function by function - the operator's view. Each one says whe
 - **RQSI segments** run under the pins as green/amber/red polylines, one per ~100m of driven
   route, each with a popup: grade, score, length, defect count, worst severity and how many
   passes cover it. Clicking one marks its hazards in the queue (see section 3).
-- The route-quality legend sits on the map, and the view does not snap back to fit on every
-  poll - the zoom you chose is the zoom you keep.
+- The route-quality legend sits on the map, and its three grade rows are **toggles**: click one
+  to draw only that grade (`12 of 247 segments shown`), click it again to show all - the counts
+  stay whole while a grade is active, same rule as the breakdown pills. The view does not snap
+  back to fit on every poll - the zoom you chose is the zoom you keep.
 - The basemap is **Esri Dark Gray Canvas**, not Carto: Carto began keying its basemaps and
   answers unauthenticated requests with HTTP 200 plus an "API KEY REQUIRED" watermark tile -
   a silent blank map rather than a loud failure. Esri's canvas is keyless and already dark.
@@ -148,6 +155,18 @@ What the app does, function by function - the operator's view. Each one says whe
 - CSV, GeoJSON and Open311 all carry a `surface` column (`roadway`/`sidewalk`), and a
   sidewalk work order is prefixed `Sidewalk:` so it cannot be misfiled as a street defect.
 
+### 10. Set the Model API key - `/settings`
+
+- Paste a key into **Settings** (nav bar) and it takes effect from the next API call - no
+  container rebuild, no restart. Stored server-side as one row in the same SQLite database;
+  `GET /api/settings` reports only where the key came from (pasted vs environment) and its
+  first four and last four characters, never the key itself.
+- The environment (`MODEL_API_KEY` in `.env`) stays as the deployment default; a key pasted
+  at `/settings` wins while it exists, and **Clear** falls back to the environment again.
+- The page also shows which world the pipeline is in (`live` / `auto` / `fixture`) and the
+  live-vs-fixtures probe. This deployment has no login and is LAN-only - anyone who can reach
+  the page can change the key, which the page says so plainly.
+
 ## The one architectural claim
 
 **SAM detects generically; Muse Spark classifies specifically.**
@@ -166,7 +185,7 @@ extend by editing [`data/service-codes.json`](data/service-codes.json) and
 
 ```bash
 npm install
-cp .env.example .env        # set MODEL_API_KEY
+cp .env.example .env        # set MODEL_API_KEY (or paste one later at /settings)
 npm run dev                 # http://localhost:3000
 ```
 
@@ -263,7 +282,7 @@ and only a corroborated pair - never a disputed one - earns a verification.
 |---|---|
 | `POST /api/jobs?name=&ext=` | raw streamed upload (no multipart buffering — a 10-minute 4K clip would otherwise take the dev server down) |
 | `POST /api/jobs/:id/process` | enqueues a scan (JSON, idempotent) - the queue runs it; any page reads progress from the job/dashboard GETs |
-| `GET /api/dashboard` | every job + detection + hazard group + RQSI segment, plus the live queue snapshot, in one request |
+| `GET /api/dashboard` | every job + detection + hazard group + RQSI segment + cross-audit intersection, plus the live queue snapshot, in one request |
 | `GET /api/jobs/:id` | job + detections + counts + GPS + cost + live queue progress |
 | `PATCH /api/detections/:id` | the human verification step: status, manual pin, street correction |
 | `GET /api/detections/:id/still` | the frame a hazard was found on - cut from playback on first request, then cached |
@@ -271,6 +290,7 @@ and only a corroborated pair - never a disputed one - earns a verification.
 | `GET /api/files/:id/:name` | Range-aware video streaming (206) so scrubbing works |
 | `GET /api/costs` | the spend ledger: per-audit frames/SAM/Spark/total, lifetime credit spend, rate card |
 | `GET /api/status` | live-vs-fixture, billing state, spend against the $150 credit |
+| `GET/POST /api/settings` | the Model API key's status (masked) · save or clear it - never returns the key |
 
 ## Cost control
 

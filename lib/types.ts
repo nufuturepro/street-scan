@@ -172,6 +172,43 @@ export type RouteSegment = {
   /** 0-100, higher is smoother */
   rqsi: number;
   grade: RqsiGrade;
+  /**
+   * The per-audit windows this stretch merged from - present only when two
+   * or more audits cover it. A single pass lists no members: one witness
+   * says nothing another pass could confirm.
+   */
+  members?: SegmentMember[];
+};
+
+/** One audit's contribution to a shared stretch (lib/consensus.ts merge). */
+export type SegmentMember = {
+  jobId: number;
+  /** that audit's own segment index, in its own route order */
+  index: number;
+  midLat: number;
+  midLon: number;
+  grade: RqsiGrade;
+  rqsi: number;
+};
+
+/**
+ * Where two audits' routes meet - one row of the Intersections card, so a
+ * reviewer can open each pass's footage at the same spot and judge the
+ * report against a second sighting instead of taking one clip's word.
+ */
+export type RouteCrossing = {
+  /** `${jobId}:${index}` of the merged stretch - selecting it details the map */
+  key: string;
+  street: string | null;
+  /** every pass graded the shared stretch the same way */
+  agree: boolean;
+  jobs: Array<{
+    jobId: number;
+    /** ms into that audit's recording at this spot, when its track knows */
+    tMs: number | null;
+    grade: RqsiGrade;
+    rqsi: number;
+  }>;
 };
 
 /**

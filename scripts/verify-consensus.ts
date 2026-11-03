@@ -25,9 +25,15 @@
  */
 import { CONSENSUS_RADIUS_M, SEGMENT_MERGE_M, SEGMENT_LENGTH_M } from '../lib/config';
 import { buildRqsi, summarize } from '../lib/rqsi';
-import { corroboratedIds, groupHazards, groupIndex, mergeSegments } from '../lib/consensus';
+import {
+  corroboratedIds,
+  groupHazards,
+  groupIndex,
+  mergeSegments,
+  routeCrossings,
+} from '../lib/consensus';
 import { canonicalStreets, streetKey } from '../lib/streets';
-import type { Detection, GpsSample, HazardType, RouteSegment } from '../lib/types';
+import type { Detection, GpsSample, GpsTrack, HazardType, RouteSegment } from '../lib/types';
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) {
@@ -292,6 +298,54 @@ assert(
   'both sightings map to one hazard id'
 );
 assert(SEGMENT_MERGE_M === SEGMENT_LENGTH_M, 'segment merging uses one grading window');
+
+/* --------------------------- intersections --------------------------- */
+
+console.log('\n# intersections');
+
+// Same two passes, plus their tracks: every sample one second apart, one per
+// metre - so a segment's midpoint maps to a known second of the recording.
+const tracks = new Map<number, GpsTrack>([
+  [4, { source: 'manual', samples: eastTrack(50) }],
+  [6, { source: 'manual', samples: eastTrack(50) }],
+]);
+const named = det({ id: 1, jobId: 4, east: 5, severity: 4 });
+named.street = 'Hart Street';
+const crossings = routeCrossings(shared, tracks, [named]);
+
+assert(
+  crossings.length === shared.filter((s) => s.passes > 1).length,
+  `every shared stretch is an intersection - got ${crossings.length}`
+);
+assert(
+  crossings.every((x) =>
+    x.jobs.every((j, i) => i === 0 || x.jobs[i - 1].jobId < j.jobId)
+  ),
+  'each row lists every pass, sorted by job'
+);
+assert(
+  crossings.every((x) =>
+    x.jobs.every((j) => j.tMs != null && j.tMs >= 0 && j.tMs <= 50_000)
+  ),
+  'each pass carries the moment in its own recording'
+);
+assert(crossings[0].agree === false, 'a disputed stretch is listed first');
+assert(
+  crossings.some((x) => x.street === 'Hart Street'),
+  'the shared hazard names its street'
+);
+assert(
+  crossings.some((x) => x.street === null),
+  'a clean shared stretch is honestly unnamed'
+);
+assert(
+  shared.every((s) => s.members?.length === 2),
+  'a merged stretch keeps both passes windows'
+);
+assert(
+  aloneRoute.every((s) => s.members == null),
+  'a single-pass segment carries no member list'
+);
 
 /* --------------------- 3. maximum, not first-come --------------------- */
 

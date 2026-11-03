@@ -1,6 +1,13 @@
 import { CONSENSUS_RADIUS_M, SEGMENT_MERGE_M } from './config';
 import { haversineM } from './rqsi';
-import type { Detection, HazardGroup, RouteSegment, RqsiGrade } from './types';
+import type {
+  Detection,
+  GpsTrack,
+  HazardGroup,
+  RouteCrossing,
+  RouteSegment,
+  RqsiGrade,
+} from './types';
 
 /**
  * What one audit learns from another.
@@ -360,6 +367,22 @@ export function mergeSegments(
       // Only a disagreement between passes is a disagreement; one pass cannot
       // disagree with itself.
       disagree: jobIds.length > 1 && new Set(members.map((m) => m.grade)).size > 1,
+      // Kept only for the shared case: the Intersections card needs each
+      // pass's own window (its grade, and where along its route it sits) to
+      // link into that audit's footage. Single-pass segments would just
+      // repeat themselves into every payload.
+      ...(jobIds.length > 1
+        ? {
+            members: members.map((m) => ({
+              jobId: m.jobId,
+              index: m.index,
+              midLat: m.midLat,
+              midLon: m.midLon,
+              grade: m.grade,
+              rqsi: m.rqsi,
+            })),
+          }
+        : {}),
       detectionIds,
       defectCount: distinctHazards,
       offRoute: members.reduce((sum, m) => sum + m.offRoute, 0),
@@ -369,4 +392,94 @@ export function mergeSegments(
       grade,
     } satisfies RouteSegment;
   });
+}
+
+/* --------------------------- intersections --------------------------- */
+
+/**
+ * Every place two audits' routes meet, as the Intersections card lists them.
+ *
+ * Straight off mergeSegments' shared stretches (passes > 1), so the list can
+ * never disagree with the map's "N passes cover this stretch" or the Route
+ * quality card's shared count - one merge, three views of it.
+ *
+ * Each row carries what a reviewer needs to weigh the report: each pass's own
+ * grade for the shared ground, whether they agree, and the moment in that
+ * audit's recording where the crossing sits - nearest GPS sample on that
+ * job's own track, so the link lands on the spot instead of at 00:00.
+ */
+export function routeCrossings(
+  segments: RouteSegment[],
+  tracks: Map<number, GpsTrack>,
+  detections: Detection[]
+): RouteCrossing[] {
+  // Street names come from the hazards on the stretch; a shared stretch with
+  // no detections (both passes saw a clean road) is honestly unnamed.
+  const streetOf = new Map<number, string>();
+  for (const d of detections) if (d.street) streetOf.set(d.id!, d.street);
+
+  const rows = segments.flatMap((s): RouteCrossing[] => {
+    if (s.passes < 2 || !s.members?.length) return [];
+
+    const jobs = s.members
+      .map((m) => ({
+        jobId: m.jobId,
+        tMs: nearestSampleT(tracks.get(m.jobId), m.midLat, m.midLon),
+        grade: m.grade,
+        rqsi: m.rqsi,
+      }))
+      .sort((a, b) => a.jobId - b.jobId);
+
+    const names = s.detectionIds
+      .map((id) => streetOf.get(id))
+      .filter((n): n is string => !!n);
+    return [
+      {
+        key: `${s.jobId}:${s.index}`,
+        street: names.length ? majority(names) : null,
+        agree: !s.disagree,
+        jobs,
+      },
+    ];
+  });
+
+  // Disputed first: a stretch two passes grade differently is the one most
+  // worth a human's attention, and it is what the confidence view is for.
+  return rows.sort((a, b) => {
+    if (a.agree !== b.agree) return a.agree ? 1 : -1;
+    return (a.street ?? '').localeCompare(b.street ?? '');
+  });
+}
+
+/** ms into the recording nearest to this spot - null when the job has no track. */
+function nearestSampleT(
+  track: GpsTrack | undefined,
+  lat: number,
+  lon: number
+): number | null {
+  if (!track?.samples.length) return null;
+  let best = track.samples[0];
+  let bestD = Infinity;
+  for (const s of track.samples) {
+    const d = haversineM({ lat, lon }, s);
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best.t;
+}
+
+function majority(names: string[]): string {
+  const counts = new Map<string, number>();
+  for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+  let winner = names[0];
+  let top = 0;
+  for (const [n, c] of counts) {
+    if (c > top) {
+      top = c;
+      winner = n;
+    }
+  }
+  return winner;
 }

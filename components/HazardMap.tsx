@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import type { Detection, HazardGroup, RouteSegment } from '@/lib/types';
+import type { Detection, HazardGroup, RouteSegment, RqsiGrade } from '@/lib/types';
 import { GRADE_COLOR, GRADE_LABEL, summarize } from '@/lib/rqsi';
 
 const SEVERITY_COLORS: Record<number, string> = {
@@ -47,6 +47,10 @@ type Props = {
   selectedKey?: string | null;
   /** Clicking a stretch on the map drives the Route quality card. */
   onSelectSegment?: (s: RouteSegment) => void;
+  /** Legend grade filter: null draws every grade. */
+  gradeFilter?: RqsiGrade | null;
+  /** Clicking a legend grade toggles it; click the lit one to clear. */
+  onGradeFilter?: (g: RqsiGrade | null) => void;
   /**
    * False while the dashboard shows footage in this slot instead. Leaflet
    * cannot see a display:none container, so it needs telling when it is back.
@@ -144,6 +148,8 @@ export default function HazardMap({
   onSelect,
   selectedKey = null,
   onSelectSegment,
+  gradeFilter = null,
+  onGradeFilter,
   visible = true,
 }: Props) {
   // Memoised: MapController re-fits on this array's identity, so a filter that
@@ -157,6 +163,10 @@ export default function HazardMap({
   const hazardOf = new Map<number, HazardGroup>();
   for (const g of hazards) for (const id of g.detectionIds) hazardOf.set(id, g);
   const route = summarize(segments);
+  // What the legend actually draws. The counts above stay whole (facet rule:
+  // picking one grade must not erase its siblings' numbers), and MapController
+  // still frames the full route, so filtering never yanks the camera.
+  const drawn = gradeFilter ? segments.filter((s) => s.grade === gradeFilter) : segments;
   const center: [number, number] =
     located.length > 0
       ? [
@@ -209,7 +219,7 @@ export default function HazardMap({
       {/* Casing first, under every colour: a near-black halo that keeps each
           stretch readable against the dark basemap and against its neighbours
           at the joins. Without it the grades read as a faint smudge. */}
-      {segments.map((s) => (
+      {drawn.map((s) => (
         <Polyline
           key={`case-${s.jobId}:${s.index}`}
           positions={[
@@ -226,7 +236,7 @@ export default function HazardMap({
           interactive={false}
         />
       ))}
-      {segments.map((s) => {
+      {drawn.map((s) => {
         const selected = selectedKey === `${s.jobId}:${s.index}`;
         return (
         <Polyline
@@ -332,24 +342,44 @@ export default function HazardMap({
       })}
     </MapContainer>
       {segments.length > 0 && (
-        <div className="pointer-events-none absolute bottom-2 left-2 z-[1000] rounded border border-zinc-700 bg-zinc-950/85 px-2.5 py-2 text-[11px] text-zinc-300">
+        <div className="absolute bottom-2 left-2 z-[1000] rounded border border-zinc-700 bg-zinc-950/85 px-2.5 py-2 text-[11px] text-zinc-300">
           <div className="mb-1.5 font-medium uppercase tracking-wider text-zinc-500">
             Route quality
           </div>
-          {(['green', 'yellow', 'red'] as const).map((g) => (
-            <div key={g} className="flex items-center gap-2">
-              <span
-                className="inline-block h-2 w-5 rounded-sm"
-                style={{ background: GRADE_COLOR[g] }}
-              />
-              <span>{GRADE_LABEL[g]}</span>
-              <span className="ml-auto tabular-nums text-zinc-500">
-                {route.counts[g]}
-              </span>
-            </div>
-          ))}
+          {(['green', 'yellow', 'red'] as const).map((g) => {
+            const active = gradeFilter === g;
+            return (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onGradeFilter?.(active ? null : g)}
+                title={
+                  active
+                    ? 'show every grade again'
+                    : `show only ${GRADE_LABEL[g].toLowerCase()} stretches`
+                }
+                className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left transition-colors ${
+                  active ? 'bg-white/10' : 'hover:bg-white/5'
+                }`}
+              >
+                <span
+                  className="inline-block h-2 w-5 rounded-sm"
+                  style={{ background: GRADE_COLOR[g] }}
+                />
+                <span className={active ? 'text-zinc-100' : ''}>
+                  {GRADE_LABEL[g]}
+                </span>
+                <span className="ml-auto tabular-nums text-zinc-500">
+                  {route.counts[g]}
+                </span>
+              </button>
+            );
+          })}
           <div className="mt-1.5 border-t border-zinc-800 pt-1 text-zinc-500">
-            {segments.length} segments · {Math.round(route.totalLengthM)} m
+            {gradeFilter
+              ? `${drawn.length} of ${segments.length} segments shown`
+              : `${segments.length} segments · ${Math.round(route.totalLengthM)} m`}
           </div>
           {segments.some((s) => s.passes > 1) && (
             <div className="mt-1 text-zinc-500">
@@ -358,7 +388,9 @@ export default function HazardMap({
             </div>
           )}
           <div className="mt-1 text-[10px] text-zinc-600">
-            click a stretch for its grade
+            {gradeFilter
+              ? 'click the lit grade to show all'
+              : 'click a grade to filter · a stretch for its grade'}
           </div>
         </div>
       )}

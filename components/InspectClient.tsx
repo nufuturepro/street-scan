@@ -38,10 +38,20 @@ const STAGE_LABEL: Record<string, string> = {
 /** Statuses where the queue is still working on this job - poll fast. */
 const IN_FLIGHT = new Set(['queued', 'transcoding', 'transcoded', 'segmenting', 'enriching']);
 
-export default function InspectClient({ id }: { id: number }) {
+export default function InspectClient({
+  id,
+  initialSeekMs = null,
+}: {
+  id: number;
+  /** Open the footage here on load - a ?t= deep link from the dashboard. */
+  initialSeekMs?: number | null;
+}) {
   const [data, setData] = useState<JobResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
+  // Fixed at mount: the deep link seeks once, then ordinary selection takes
+  // over (VideoPane prefers the active hazard's own timestamp).
+  const [seekMs] = useState<number | null>(initialSeekMs);
   // Bumped on every selection so asking for the hazard that is already on
   // screen seeks to it again - see VideoPane for why activeId alone is not
   // enough for that.
@@ -222,6 +232,7 @@ export default function InspectClient({ id }: { id: number }) {
             detections={detections}
             activeId={activeId}
             seekToken={seekToken}
+            seekMs={seekMs}
             onSelect={select}
           />
           <div className="mt-5">

@@ -1,8 +1,9 @@
 import { listJobs, listAllDetections, readGps } from '@/lib/repo';
 import { buildRqsi } from '@/lib/rqsi';
-import { groupHazards, mergeSegments } from '@/lib/consensus';
+import { groupHazards, mergeSegments, routeCrossings } from '@/lib/consensus';
 import { clientMode } from '@/lib/config';
 import { activeJobs } from '@/lib/queue';
+import type { GpsTrack } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,9 +26,11 @@ export async function GET() {
 
   const hazards = groupHazards(detections);
 
+  const tracks = new Map<number, GpsTrack>();
   const perJob = jobs.flatMap((job) => {
     const track = readGps(job.id);
     if (track.samples.length < 2) return [];
+    tracks.set(job.id, track);
     const located = detections.filter(
       (d) => d.jobId === job.id && d.lat != null && d.lon != null
     );
@@ -37,6 +40,11 @@ export async function GET() {
   // A street driven twice is graded once, at the worse of the two readings.
   const segments = mergeSegments(perJob, hazards);
 
+  // Where those merged routes meet, with each pass's grade and the moment in
+  // its recording - the Intersections card's rows, derived from the same
+  // merge so its count can never drift from the map's shared count.
+  const crossings = routeCrossings(segments, tracks, detections);
+
   // mode rides along so the export rows can say when a cost figure is what a
   // run *would* have cost rather than what it was billed - fixtures bill $0.
   // active is the scan queue's live snapshot - what the Scanning strip draws.
@@ -45,6 +53,7 @@ export async function GET() {
     detections,
     segments,
     hazards,
+    crossings,
     mode: clientMode(),
     active: activeJobs(),
   });

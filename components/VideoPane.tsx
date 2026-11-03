@@ -14,6 +14,12 @@ type Props = {
   activeId: number | null;
   /** Increments on every selection, so re-asking for the same hazard re-seeks. */
   seekToken: number;
+  /**
+   * Open the footage at this moment instead of 00:00 - the ?t= deep link
+   * from the dashboard's Intersections card. Used only while nothing is
+   * selected: an active hazard's own timestamp wins.
+   */
+  seekMs?: number | null;
   onSelect: (id: number) => void;
 };
 
@@ -25,7 +31,7 @@ type Props = {
  * short window around its sample time rather than flickering for 1/10s; the
  * alternative looks correct in code and terrible on screen.
  */
-export default function VideoPane({ src, detections, activeId, seekToken, onSelect }: Props) {
+export default function VideoPane({ src, detections, activeId, seekToken, seekMs = null, onSelect }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
@@ -93,17 +99,25 @@ export default function VideoPane({ src, detections, activeId, seekToken, onSele
   }, [detections]);
 
   useEffect(() => {
-    if (activeId == null) return;
-    const d = detectionsRef.current.find((x) => x.id === activeId);
+    const fromActive =
+      activeId != null
+        ? detectionsRef.current.find((x) => x.id === activeId)?.tMs
+        : undefined;
+    const target = fromActive ?? seekMs;
+    // `src` is a dependency because the <video> element does not exist until
+    // the job fetch lands: an effect that ran while videoRef was still null
+    // used to give up and never seek, which left a ?t= deep link parked at
+    // 00:00. The element arrives with src, so this re-runs exactly then.
+    if (target == null || !src) return;
     const video = videoRef.current;
-    if (!d || !video) return;
+    if (!video) return;
     const seek = () => {
-      video.currentTime = d.tMs / 1000;
+      video.currentTime = target / 1000;
     };
     if (video.readyState >= 1) seek();
     else video.addEventListener('loadedmetadata', seek, { once: true });
     return () => video.removeEventListener('loadedmetadata', seek);
-  }, [activeId, seekToken]);
+  }, [activeId, seekToken, seekMs, src]);
 
   const seekTo = (id: number) => {
     const d = detections.find((x) => x.id === id);
