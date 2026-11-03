@@ -282,6 +282,14 @@ Meta's usage page remains the authority for anything before the ledger.
 [`scripts/probe-usage.ts`](scripts/probe-usage.ts) exercises the live write path for about a
 cent and reads back whether the provider's own billed frame count arrived.
 
+Because Meta exposes no usage API, `/costs` also carries a **reconcile** box: type the
+free-credits-remaining figure from Meta's Billing page and the app appends the difference
+as one dated `adjustment` row - the ledger's redo button. Seed rows are never rewritten:
+the seed stays what the app claimed, the adjustment stays what Meta said, and a later
+reconciliation corrects in either direction. Each audit row expands to its billed frames,
+SAM and classification counts, token totals, and the underlying ledger rows, so a
+`pre-ledger seed` is never mistaken for a live `provider usage` charge.
+
 ## Assumptions still open
 
 1. **SAM processes an uploaded video at its native frame rate.** Settled by

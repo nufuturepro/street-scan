@@ -188,6 +188,19 @@ export type SpendTotals = {
   classCalls: number;
   tokensIn: number;
   tokensOut: number;
+  /** what you re-recorded from Meta's billing page; see the reconcile action */
+  adjustmentUsd: number;
+};
+
+/** One row of the spend ledger, as the costs table's detail view shows it. */
+export type SpendRow = {
+  kind: 'sam' | 'spark' | 'adjustment';
+  frames: number;
+  tokensIn: number;
+  tokensOut: number;
+  usd: number;
+  detail: string;
+  createdAt: string;
 };
 
 /**

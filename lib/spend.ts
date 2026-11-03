@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { SpendTotals } from './types';
+import type { SpendRow, SpendTotals } from './types';
 
 /**
  * The spend ledger: one row per billed event, written at the moment money
@@ -51,6 +51,7 @@ const TOTALS = `
     COALESCE(SUM(usd), 0) AS usd,
     COALESCE(SUM(CASE WHEN kind = 'sam' THEN usd ELSE 0 END), 0) AS sam_usd,
     COALESCE(SUM(CASE WHEN kind = 'spark' THEN usd ELSE 0 END), 0) AS spark_usd,
+    COALESCE(SUM(CASE WHEN kind = 'adjustment' THEN usd ELSE 0 END), 0) AS adjustment_usd,
     COALESCE(SUM(CASE WHEN kind = 'sam' THEN frames ELSE 0 END), 0) AS frames,
     COALESCE(SUM(CASE WHEN kind = 'sam' THEN 1 ELSE 0 END), 0) AS requests,
     COALESCE(SUM(CASE WHEN kind = 'spark' THEN 1 ELSE 0 END), 0) AS class_calls,
@@ -62,6 +63,7 @@ type TotalRow = {
   usd: number;
   sam_usd: number;
   spark_usd: number;
+  adjustment_usd: number;
   frames: number;
   requests: number;
   class_calls: number;
@@ -77,6 +79,7 @@ function totals(where: string, arg?: number): SpendTotals {
     usd: round4(row?.usd ?? 0),
     samUsd: round4(row?.sam_usd ?? 0),
     sparkUsd: round4(row?.spark_usd ?? 0),
+    adjustmentUsd: round4(row?.adjustment_usd ?? 0),
     frames: row?.frames ?? 0,
     requests: row?.requests ?? 0,
     classCalls: row?.class_calls ?? 0,
@@ -93,6 +96,33 @@ export function jobSpend(jobId: number): SpendTotals {
 /** The account's lifetime spend per this ledger - the number Meta's usage page should agree with, post-ledger. */
 export function allSpend(): SpendTotals {
   return totals('');
+}
+
+/** Every ledger row for one audit, oldest first - what the detail view expands. */
+export function jobSpendRows(jobId: number): SpendRow[] {
+  const rows = db()
+    .prepare(
+      `SELECT kind, frames, tokens_in, tokens_out, usd, detail, created_at
+       FROM spend WHERE job_id = ? ORDER BY id`
+    )
+    .all(jobId) as Array<{
+      kind: string;
+      frames: number;
+      tokens_in: number;
+      tokens_out: number;
+      usd: number;
+      detail: string | null;
+      created_at: string;
+    }>;
+  return rows.map((r) => ({
+    kind: r.kind as SpendKind,
+    frames: r.frames,
+    tokensIn: r.tokens_in,
+    tokensOut: r.tokens_out,
+    usd: round4(r.usd),
+    detail: r.detail ?? '',
+    createdAt: r.created_at,
+  }));
 }
 
 /** SQLite cannot return 1e-05 cleanly; four places keeps every cent visible. */

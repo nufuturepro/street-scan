@@ -1,5 +1,5 @@
 import { probeLive, costTally } from '@/lib/meta';
-import { clientMode } from '@/lib/config';
+import { clientMode, HACKATHON_CREDIT_USD } from '@/lib/config';
 import { allSpend } from '@/lib/spend';
 
 export const dynamic = 'force-dynamic';
@@ -57,7 +57,7 @@ export async function GET() {
       tokensOut: lifetime.tokensOut,
       // fixtures are free and only ever happen in this process: session by nature
       fixtureCalls: cost.fixtureCalls,
-      creditUsd: 150,
+      creditUsd: HACKATHON_CREDIT_USD,
     },
   });
 }

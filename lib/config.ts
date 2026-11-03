@@ -154,6 +154,13 @@ export const SAM_MIN_BILLED_FRAMES = 50;
 export const SPARK_USD_PER_1M_IN = 1.25;
 export const SPARK_USD_PER_1M_OUT = 4.25;
 
+/**
+ * The free-credit pool the spend pill reports against, and the number the
+ * reconcile action subtracts from to turn "credits remaining" (as Meta's
+ * Billing page shows it) into actual spend.
+ */
+export const HACKATHON_CREDIT_USD = 150;
+
 /** API base. Public, not a secret. */
 export const META_API_BASE = process.env.NEXT_PUBLIC_META_API_BASE ?? 'https://api.meta.ai/v1';
 
