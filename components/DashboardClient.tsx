@@ -53,6 +53,36 @@ function Select({
  * Dispatch dashboard: where the hazards are, what state each work order is in,
  * and the export that hands it to a real crew.
  */
+/**
+ * One predicate, two windows: the queue and map apply every filter (activeType
+ * set), the breakdown counts with the type filter lifted (activeType null) so
+ * its pills keep all their counts - and stay clickable - while one is active.
+ */
+function passFilters(
+  d: Detection,
+  f: {
+    status: string;
+    surface: string;
+    minSeverity: string;
+    jobId: string;
+    reviewOnly: boolean;
+  },
+  activeType: string | null
+): boolean {
+  const minSev = Number(f.minSeverity);
+  if (activeType && d.hazardType !== activeType) return false;
+  if (f.status !== 'all' && d.reviewStatus !== f.status) return false;
+  // 'street' is the default view: sidewalk findings are kept and shown,
+  // but they are a different work queue, so they do not crowd the one
+  // for moving traffic unless asked for.
+  if (f.surface === 'street' && d.surface === 'sidewalk') return false;
+  if (f.surface === 'sidewalk' && d.surface !== 'sidewalk') return false;
+  if (d.severity < minSev) return false;
+  if (f.jobId !== 'all' && d.jobId !== Number(f.jobId)) return false;
+  if (f.reviewOnly && !d.needsReview) return false;
+  return true;
+}
+
 export default function DashboardClient() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [detections, setDetections] = useState<Detection[]>([]);
@@ -127,22 +157,17 @@ export default function DashboardClient() {
     };
   }, []);
 
-  const filtered = useMemo(() => {
-    const minSev = Number(minSeverity);
-    return detections.filter((d) => {
-      if (type !== 'all' && d.hazardType !== type) return false;
-      if (status !== 'all' && d.reviewStatus !== status) return false;
-      // 'street' is the default view: sidewalk findings are kept and shown,
-      // but they are a different work queue, so they do not crowd the one
-      // for moving traffic unless asked for.
-      if (surface === 'street' && d.surface === 'sidewalk') return false;
-      if (surface === 'sidewalk' && d.surface !== 'sidewalk') return false;
-      if (d.severity < minSev) return false;
-      if (jobId !== 'all' && d.jobId !== Number(jobId)) return false;
-      if (reviewOnly && !d.needsReview) return false;
-      return true;
-    });
-  }, [detections, type, status, surface, minSeverity, jobId, reviewOnly]);
+  const filtered = useMemo(
+    () =>
+      detections.filter((d) =>
+        passFilters(
+          d,
+          { status, surface, minSeverity, jobId, reviewOnly },
+          type === 'all' ? null : type
+        )
+      ),
+    [detections, type, status, surface, minSeverity, jobId, reviewOnly]
+  );
 
   const setActive = (id: number) => {
     setActiveId(id);
@@ -204,9 +229,13 @@ export default function DashboardClient() {
   const sidewalkTotal = detections.filter((d) => d.surface === 'sidewalk').length;
   const byType = useMemo(() => {
     const acc: Record<string, number> = {};
-    for (const d of filtered) acc[d.hazardType] = (acc[d.hazardType] ?? 0) + 1;
+    for (const d of detections) {
+      if (!passFilters(d, { status, surface, minSeverity, jobId, reviewOnly }, null))
+        continue;
+      acc[d.hazardType] = (acc[d.hazardType] ?? 0) + 1;
+    }
     return acc;
-  }, [filtered]);
+  }, [detections, status, surface, minSeverity, jobId, reviewOnly]);
 
   const jobsWithDetections = jobs.filter((j) => detections.some((d) => d.jobId === j.id));
 
@@ -235,6 +264,22 @@ export default function DashboardClient() {
         )
         .reduce((sum, x) => sum + x.lengthM, 0)
     : 0;
+  // What the selected stretch contains: the queue highlights these rows so
+  // "the red bit over there" becomes "these hazards", in the list.
+  const segmentIds = new Set(selectedSegment?.detectionIds ?? []);
+  const segmentMembers = segmentIds.size
+    ? detections.filter((d) => segmentIds.has(d.id!))
+    : [];
+  const visibleIds = new Set(filtered.map((d) => d.id));
+  const segmentVisible = segmentMembers.filter((d) => visibleIds.has(d.id)).length;
+  const segmentTypeSummary = Object.entries(
+    segmentMembers.reduce<Record<string, number>>((acc, d) => {
+      acc[d.hazardType] = (acc[d.hazardType] ?? 0) + 1;
+      return acc;
+    }, {})
+  )
+    .map(([k, n]) => `${n} ${k.replace('_', ' ')}`)
+    .join(' · ');
 
   // Which physical hazard each row belongs to, so a detection a second audit
   // also saw can say so in the queue. Not a useMemo: `hazards` is reassigned by
@@ -498,6 +543,17 @@ export default function DashboardClient() {
             <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
               Queue
             </h2>
+            {selectedSegment && (
+              <p className="mt-1 text-[11px] text-amber-400/90">
+                {segmentMembers.length === 0
+                  ? 'No hazards in this stretch.'
+                  : `${segmentMembers.length} in this stretch: ${segmentTypeSummary}${
+                      segmentVisible < segmentMembers.length
+                        ? ` · ${segmentMembers.length - segmentVisible} hidden by filters`
+                        : ''
+                    }`}
+              </p>
+            )}
             <ul className="mt-2 max-h-72 divide-y divide-zinc-800 overflow-y-auto">
               {filtered.length === 0 && (
                 <li className="py-6 text-center text-sm text-zinc-500">
@@ -511,6 +567,10 @@ export default function DashboardClient() {
                   key={d.id}
                   className={`flex items-center gap-2 py-2 ${
                     d.id === activeId ? 'bg-zinc-800/60 -mx-1 px-1 rounded' : ''
+                  } ${
+                    segmentIds.has(d.id!)
+                      ? 'border-l-2 border-amber-500 pl-1.5'
+                      : ''
                   }`}
                   onMouseEnter={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
@@ -633,11 +693,32 @@ export default function DashboardClient() {
               Breakdown
             </h2>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              {Object.entries(byType).map(([k, n]) => (
-                <span key={k} className="rounded border border-zinc-700 px-2 py-1 capitalize">
-                  {k.replace('_', '-')} <span className="text-zinc-500">{n}</span>
-                </span>
-              ))}
+              {Object.entries(byType).map(([k, n]) => {
+                const active = type === k;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setType(active ? 'all' : k)}
+                    title={
+                      active
+                        ? 'show every type again'
+                        : `show only ${k.replace('_', ' ')} findings`
+                    }
+                    className={`rounded border px-2 py-1 capitalize transition-colors ${
+                      active
+                        ? 'border-amber-600 bg-amber-950/70 text-amber-300'
+                        : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                    }`}
+                  >
+                    {k.replace('_', '-')}{' '}
+                    <span className={active ? 'text-amber-400/80' : 'text-zinc-500'}>
+                      {n}
+                    </span>
+                  </button>
+                );
+              })}
               {Object.keys(byType).length === 0 && (
                 <span className="text-zinc-500">No hazards in view.</span>
               )}

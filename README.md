@@ -66,6 +66,12 @@ What the app does, function by function - the operator's view. Each one says whe
 - Sidewalk findings wear a `walk` chip and the breakdown splits `18 street - 4 on sidewalk`:
   kept, visible, never passed off as street defects.
 - The breakdown counts hazards by type and calls out how many are still waiting on a GPS fix.
+  Each count is a toggle: click a type to filter queue **and** map to just those hazards.
+  Counts are computed with the type filter lifted, so the pill you picked stays lit while the
+  others keep their full counts - picking one narrows the view instead of erasing its siblings.
+- Clicking an RQSI segment lines the queue up with the map: a strip under the Queue header says
+  `N in this stretch: 1 pothole - 2 cracks` (and how many are hidden by active filters), and
+  every row that lives in the stretch gets an amber rail.
 
 ### 4. Hover a row - the still popup
 
@@ -95,7 +101,7 @@ What the app does, function by function - the operator's view. Each one says whe
   from the frame, the pin says so instead of picking a winner.
 - **RQSI segments** run under the pins as green/amber/red polylines, one per ~100m of driven
   route, each with a popup: grade, score, length, defect count, worst severity and how many
-  passes cover it.
+  passes cover it. Clicking one marks its hazards in the queue (see section 3).
 - The route-quality legend sits on the map, and the view does not snap back to fit on every
   poll - the zoom you chose is the zoom you keep.
 - The basemap is **Esri Dark Gray Canvas**, not Carto: Carto began keying its basemaps and
