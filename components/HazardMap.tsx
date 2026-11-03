@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Detection, HazardGroup, RouteSegment } from '@/lib/types';
 import { GRADE_COLOR, GRADE_LABEL, summarize } from '@/lib/rqsi';
@@ -43,6 +43,10 @@ type Props = {
   hazards?: HazardGroup[];
   activeId: number | null;
   onSelect: (id: number) => void;
+  /** `${jobId}:${index}` of the stretch the Route quality card is detailing. */
+  selectedKey?: string | null;
+  /** Clicking a stretch on the map drives the Route quality card. */
+  onSelectSegment?: (s: RouteSegment) => void;
   /**
    * False while the dashboard shows footage in this slot instead. Leaflet
    * cannot see a display:none container, so it needs telling when it is back.
@@ -132,7 +136,16 @@ function MapController({
   return null;
 }
 
-export default function HazardMap({ detections, segments, hazards = [], activeId, onSelect, visible = true }: Props) {
+export default function HazardMap({
+  detections,
+  segments,
+  hazards = [],
+  activeId,
+  onSelect,
+  selectedKey = null,
+  onSelectSegment,
+  visible = true,
+}: Props) {
   // Memoised: MapController re-fits on this array's identity, so a filter that
   // rebuilt it every render would snap the map back mid-interaction.
   const located = useMemo(
@@ -193,7 +206,29 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
         url="https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
       />
       <MapController located={located} segments={segments} activeId={activeId} visible={visible} />
+      {/* Casing first, under every colour: a near-black halo that keeps each
+          stretch readable against the dark basemap and against its neighbours
+          at the joins. Without it the grades read as a faint smudge. */}
       {segments.map((s) => (
+        <Polyline
+          key={`case-${s.jobId}:${s.index}`}
+          positions={[
+            [s.lat1, s.lon1],
+            [s.lat2, s.lon2],
+          ]}
+          pathOptions={{
+            color: '#09090b',
+            weight: 11,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+          interactive={false}
+        />
+      ))}
+      {segments.map((s) => {
+        const selected = selectedKey === `${s.jobId}:${s.index}`;
+        return (
         <Polyline
           key={`${s.jobId}:${s.index}`}
           positions={[
@@ -202,11 +237,21 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
           ]}
           pathOptions={{
             color: GRADE_COLOR[s.grade],
-            weight: 6,
-            opacity: 0.85,
+            weight: selected ? 10 : 7,
+            opacity: 1,
             lineCap: 'round',
           }}
+          eventHandlers={{ click: () => onSelectSegment?.(s) }}
         >
+          <Tooltip direction="top" sticky opacity={0.95}>
+            <span style={{ fontFamily: 'inherit', fontSize: 12 }}>
+              <strong style={{ color: GRADE_COLOR[s.grade] }}>
+                {GRADE_LABEL[s.grade]}
+              </strong>{' '}
+              · RQSI {s.rqsi} · {s.defectCount} defect
+              {s.defectCount === 1 ? '' : 's'}
+            </span>
+          </Tooltip>
           <Popup>
             <div style={{ minWidth: 180, fontFamily: 'inherit' }}>
               <strong style={{ color: GRADE_COLOR[s.grade] }}>
@@ -235,7 +280,8 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
             </div>
           </Popup>
         </Polyline>
-      ))}
+        );
+      })}
       {located.map((d) => {
         const group = hazardOf.get(d.id!);
         return (
@@ -311,6 +357,9 @@ export default function HazardMap({ detections, segments, hazards = [], activeId
               {segments.filter((s) => s.disagree).length} disagree
             </div>
           )}
+          <div className="mt-1 text-[10px] text-zinc-600">
+            click a stretch for its grade
+          </div>
         </div>
       )}
     </div>

@@ -57,6 +57,8 @@ export default function DashboardClient() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [segments, setSegments] = useState<RouteSegment[]>([]);
+  /** `${jobId}:${index}` of the stretch the Route quality card is detailing; null = whole route. */
+  const [segmentKey, setSegmentKey] = useState<string | null>(null);
   const [hazards, setHazards] = useState<HazardGroup[]>([]);
   // The scan queue's live snapshot - which jobs are running or waiting, and
   // how far along each is, without a page open on any of them.
@@ -217,6 +219,22 @@ export default function DashboardClient() {
       ? segments
       : segments.filter((s) => s.jobIds.includes(Number(jobId)));
   const route = summarize(visibleSegments);
+  // Keyed, not held as an object: the 5s poll hands down a fresh segments
+  // array every time, so a reference would go stale while the same stretch
+  // simply re-arrived. The lookup finds it in the current array instead.
+  const selectedSegment = segmentKey
+    ? visibleSegments.find((s) => `${s.jobId}:${s.index}` === segmentKey) ?? null
+    : null;
+  // Position along this audit's route: the type keeps order (index) and
+  // length, not absolute offsets, so the start is the sum of what precedes.
+  const segStartM = selectedSegment
+    ? visibleSegments
+        .filter(
+          (x) =>
+            x.jobId === selectedSegment.jobId && x.index < selectedSegment.index
+        )
+        .reduce((sum, x) => sum + x.lengthM, 0)
+    : 0;
 
   // Which physical hazard each row belongs to, so a detection a second audit
   // also saw can say so in the queue. Not a useMemo: `hazards` is reassigned by
@@ -390,6 +408,11 @@ export default function DashboardClient() {
               hazards={hazards}
               activeId={activeId}
               onSelect={setActive}
+              selectedKey={segmentKey}
+              onSelectSegment={(s) => {
+                const k = `${s.jobId}:${s.index}`;
+                setSegmentKey((prev) => (prev === k ? null : k));
+              }}
               visible={!open}
             />
           </div>
@@ -633,37 +656,121 @@ export default function DashboardClient() {
           </div>
 
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-              Route quality
-            </h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                Route quality
+              </h2>
+              {selectedSegment && (
+                <button
+                  type="button"
+                  onClick={() => setSegmentKey(null)}
+                  className="rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  title="back to the whole-route summary"
+                >
+                  whole route ✕
+                </button>
+              )}
+            </div>
             {visibleSegments.length === 0 ? (
               <p className="mt-2 text-xs text-zinc-500">
                 No GPS route to grade yet — segments need a track from the audit.
               </p>
             ) : (
               <>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold tabular-nums text-zinc-100">
-                    {route.rqsi}
-                  </span>
-                  <span className="text-xs text-zinc-500">
-                    RQSI · {Math.round(route.totalLengthM)} m graded
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  {(['green', 'yellow', 'red'] as const).map((g) => (
-                    <span
-                      key={g}
-                      className="flex items-center gap-1.5 rounded border border-zinc-700 px-2 py-1"
-                    >
+                {selectedSegment ? (
+                  <div>
+                    <div className="mt-2 text-[10px] uppercase tracking-wider text-zinc-600">
+                      Segment {selectedSegment.index + 1} of{' '}
+                      {
+                        visibleSegments.filter(
+                          (x) => x.jobId === selectedSegment.jobId
+                        ).length
+                      }{' '}
+                      · audit #{selectedSegment.jobId}
+                    </div>
+                    <div className="mt-1 flex items-baseline gap-2">
                       <span
-                        className="inline-block h-2 w-4 rounded-sm"
-                        style={{ background: GRADE_COLOR[g] }}
-                      />
-                      {GRADE_LABEL[g]} <span className="text-zinc-500">{route.counts[g]}</span>
-                    </span>
-                  ))}
-                </div>
+                        className="text-3xl font-semibold tabular-nums"
+                        style={{ color: GRADE_COLOR[selectedSegment.grade] }}
+                      >
+                        {selectedSegment.rqsi}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        RQSI · {GRADE_LABEL[selectedSegment.grade]} ·{' '}
+                        {selectedSegment.lengthM} m
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      <span className="rounded border border-zinc-700 px-2 py-1">
+                        {selectedSegment.defectCount} defect
+                        {selectedSegment.defectCount === 1 ? '' : 's'}
+                      </span>
+                      {selectedSegment.defectCount > 0 && (
+                        <span className="rounded border border-zinc-700 px-2 py-1">
+                          worst severity {selectedSegment.worstSeverity}
+                        </span>
+                      )}
+                      <span className="rounded border border-zinc-700 px-2 py-1">
+                        density {selectedSegment.density}/100 m
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[11px] text-zinc-500">
+                      {Math.round(segStartM)}–
+                      {Math.round(segStartM + selectedSegment.lengthM)} m along
+                      the route
+                      {selectedSegment.offRoute > 0
+                        ? ` · ${selectedSegment.offRoute} placed off-track`
+                        : ''}
+                    </p>
+                    {selectedSegment.passes > 1 && (
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        {selectedSegment.passes} passes{' '}
+                        {selectedSegment.disagree
+                          ? 'grade it differently'
+                          : 'agree on the grade'}{' '}
+                        · jobs{' '}
+                        {selectedSegment.jobIds.map((id) => `#${id}`).join(', ')}
+                      </p>
+                    )}
+                    <p className="mt-2 text-[11px] text-zinc-500">
+                      Whole route:{' '}
+                      <span className="tabular-nums text-zinc-400">
+                        {route.rqsi} RQSI
+                      </span>{' '}
+                      · {route.counts.green} green · {route.counts.yellow}{' '}
+                      yellow · {route.counts.red} red
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-3xl font-semibold tabular-nums text-zinc-100">
+                        {route.rqsi}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        RQSI · {Math.round(route.totalLengthM)} m graded
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      {(['green', 'yellow', 'red'] as const).map((g) => (
+                        <span
+                          key={g}
+                          className="flex items-center gap-1.5 rounded border border-zinc-700 px-2 py-1"
+                        >
+                          <span
+                            className="inline-block h-2 w-4 rounded-sm"
+                            style={{ background: GRADE_COLOR[g] }}
+                          />
+                          {GRADE_LABEL[g]}{' '}
+                          <span className="text-zinc-500">{route.counts[g]}</span>
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[11px] text-zinc-600">
+                      Click any stretch on the map for its own grade.
+                    </p>
+                  </>
+                )}
                 {corroborated + disputedHazards + sharedStretches > 0 && (
                   <p className="mt-2 text-[11px] text-zinc-500">
                     {corroborated} corroborated · {disputedHazards} disputed hazard
@@ -680,7 +787,7 @@ export default function DashboardClient() {
                     different runs
                   </p>
                 )}
-                {route.worst && (
+                {!selectedSegment && route.worst && (
                   <p className="mt-2 text-xs text-zinc-400">
                     Worst: segment {route.worst.index + 1} ·{' '}
                     <span style={{ color: GRADE_COLOR[route.worst.grade] }}>
