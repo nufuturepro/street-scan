@@ -5,6 +5,7 @@ import { extractOverlayGps } from './overlay';
 import { corroboratedIds, groupHazards } from './consensus';
 import { runSegmentation } from './sam';
 import { resolveTracks } from './filter';
+import { tooSmall } from './scale';
 import { classifyTrack } from './spark';
 import { getMetaClient } from './meta';
 import { jobSpend } from './spend';
@@ -161,11 +162,21 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
       clientMode: seg.clientMode,
     });
     const tracks = resolveTracks(seg.frames, fps);
+
+    // Size gate at scan time (lib/scale.ts): a mask the picture cannot support
+    // is not sent to the classifier at all. That saves a Spark call per speck
+    // and - the point - stops the work order from ever existing. Existing
+    // audits get the same verdict at read time, so nothing had to be re-scanned.
+    const judged = tracks.filter((t) => !tooSmall(t.best.polygon));
+    const tooSmallTracks = tracks.length - judged.length;
+
     report({
       stage: 'filtering',
       done: seg.frames.length,
       total: seg.frames.length,
-      message: `${tracks.length} persistent hazards survived the filter`,
+      message:
+        `${judged.length} persistent hazards survived the filter` +
+        (tooSmallTracks ? ` · ${tooSmallTracks} too small to judge` : ''),
       clientMode: seg.clientMode,
     });
 
@@ -173,13 +184,14 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
     const skipOsm = client.mode === 'fixture'; // no coords yet means nothing to check
     let done = 0;
     let skipped = 0;
+    let skippedSmall = 0;
     let failed = 0;
 
     // A re-run replaces this job's results instead of appending a second set.
     deleteDetections(jobId);
     updateJob(jobId, { status: 'enriching' });
 
-    for (const track of tracks) {
+    for (const track of judged) {
       // One bad track must not cost the whole audit: a crop ffmpeg rejects or
       // a transient API error skips that detection - counted below - instead
       // of failing the run after its rows were already cleared for the re-run.
@@ -204,7 +216,7 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
         report({
           stage: 'classifying',
           done,
-          total: tracks.length,
+          total: judged.length,
           message: `classification error - ${failed} skipped of ${done} seen`,
           clientMode: seg.clientMode,
         });
@@ -214,24 +226,29 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
 
       // Rejected by the classifier as not a defect (see lib/spark.ts): counted
       // so the skip shows in the progress stream instead of silently vanishing.
-      if (!result) {
+      // 'too_small' is called out separately - it is the reason the app used to
+      // have no way to hear, and a run that hides specks should say so.
+      if (!result.detection) {
         skipped += 1;
+        if (result.classification.rejectReason === 'too_small') skippedSmall += 1;
         report({
           stage: 'classifying',
           done,
-          total: tracks.length,
-          message: `not a defect - ${skipped} rejected of ${done} seen`,
+          total: judged.length,
+          message:
+            `not a defect - ${skipped} rejected of ${done} seen` +
+            (skippedSmall ? ` (${skippedSmall} too small)` : ''),
           clientMode: seg.clientMode,
         });
         continue;
       }
 
-      const { detection } = result;
+      const detection = result.detection;
       insertDetection(detection);
       report({
         stage: 'classifying',
         done,
-        total: tracks.length,
+        total: judged.length,
         message: `${detection.hazardType} · severity ${detection.severity}`,
         clientMode: seg.clientMode,
       });
@@ -256,13 +273,21 @@ export async function runJob(jobId: number, onProgress: ProgressSink = noop): Pr
       error: null,
     });
 
+    // listDetections is the read-time view: street names canonicalised, one
+    // row per physical defect within the audit, size verdict stamped. What the
+    // audit page counts is what this line reports.
+    const kept = listDetections(jobId);
+    const mergedAway = kept.reduce((n, d) => n + (d.mergedIds?.length ?? 0), 0);
+
     report({
       stage: 'done',
-      done: tracks.length,
-      total: tracks.length,
+      done: judged.length,
+      total: judged.length,
       message:
-        `${listDetections(jobId).length} detections from ${seg.chunks} chunks ` +
+        `${kept.length} detections from ${seg.chunks} chunks ` +
         `· ${spent.toFixed(3)} · mode: ${seg.clientMode}` +
+        (mergedAway ? ` · ${mergedAway} duplicates merged` : '') +
+        (tooSmallTracks ? ` · ${tooSmallTracks} too small to judge` : '') +
         (promoted ? ` · ${promoted} verified by a second pass` : '') +
         (seg.notice ? ` · ${seg.notice}` : ''),
       clientMode: seg.clientMode,

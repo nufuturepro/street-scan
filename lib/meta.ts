@@ -516,6 +516,9 @@ function normalize(raw: Record<string, unknown>): Classification {
       : 3) as Classification['severity'],
     confidence: Math.min(1, Math.max(0, Number(raw.confidence ?? 0.5))),
     justification: String(raw.justification ?? raw.description ?? ''),
+    // Why it refused, when it did - 'too_small' is the verdict this app had no
+    // way to hear before lib/scale.ts measured the patch for it.
+    rejectReason: str(raw.rejectReason ?? raw.reject_reason),
     // Default true: a field the model forgets must not delete every detection.
     onRoadway: parseBool(raw.onRoadway ?? raw.on_roadway, true),
     streetContext: {

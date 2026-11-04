@@ -55,6 +55,19 @@ export type Detection = {
    * filter and lib/rqsi.ts's roadway-only rule.
    */
   surface: 'roadway' | 'sidewalk';
+  /**
+   * Derived at read time by lib/scale.ts, never stored: the mask is too small
+   * (too far away, or genuinely tiny) for the picture to support the claim.
+   * Hidden from the queue, the grade and the exports by default; a reviewer
+   * can reveal the row and reject it. See MIN_MASK_WIDTH_FRAC in config.ts.
+   */
+  tooSmall?: boolean;
+  /**
+   * Detection ids this row absorbed in the within-audit merge (lib/dedupe.ts):
+   * the same broken patch seen again as the camera came closer. Absent or empty
+   * when the row stands alone.
+   */
+  mergedIds?: number[];
 };
 
 export type HazardType =
@@ -287,4 +300,10 @@ export type Classification = {
   /** false when the patch sits on sidewalk, curb or property, not the roadway */
   onRoadway: boolean;
   streetContext: StreetContext;
+  /**
+   * Why the classifier refused, when it did: 'too_small' is the case this app
+   * was missing entirely - a patch a few dozen pixels across that the picture
+   * cannot support a verdict on. Null when it accepted the patch.
+   */
+  rejectReason?: string | null;
 };

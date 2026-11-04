@@ -70,4 +70,22 @@ assert(
   'the prompt forbids forcing a non-defect into the taxonomy'
 );
 
+// The size-aware prompt. A crop that is 52x43 px used to arrive with no scale
+// reference at all, so a speck 20-30 m down the road was described with the
+// confidence of a close-up. These pin the two things that fix that: the size is
+// stated, and "too small" is an answer the model can give.
+const scaled = buildClassificationPrompt({
+  cropPx: '52 x 43',
+  framePx: '854 x 480',
+  framePct: '0.55',
+});
+assert(scaled.includes('52 x 43'), 'the prompt states the crop\'s pixel size');
+assert(scaled.includes('854 x 480') && scaled.includes('0.55'), 'the prompt states the frame size and the patch share of it');
+assert(scaled.includes('rejectReason "too_small"'), 'the prompt offers too_small as an explicit reject reason');
+assert(scaled.includes('"rejectReason"'), 'the JSON contract asks for the reject reason');
+assert(
+  !buildClassificationPrompt().includes('pixels out of an'),
+  'without a size argument the prompt makes no scale claim it cannot support'
+);
+
 console.log(process.exitCode ? '\nFAILED' : '\nAll classification assertions passed.');

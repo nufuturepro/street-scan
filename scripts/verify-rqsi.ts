@@ -16,6 +16,8 @@
  *   4. index arithmetic and its clamp, at the calibrated K
  *   5. the real audit's outcome - 3 green + 1 red, RQSI 75 - matching what the
  *      deployed dashboard showed
+ *   6. the size gate - a speck grades nothing, a near-field hazard does - and
+ *      the reject path, which must keep a reviewer's verdict out of the maths
  *
  * Run: npm run verify   (compiles this and verify-filter to .verify/ and runs
  * them in sequence, stopping at the first failure)
@@ -215,6 +217,26 @@ assert(
 // A rejected false positive leaves no trace on the grade. Without this, a
 // reviewer's "not a hazard" verdict would only hide a row while still turning
 // the street red and dragging its RQSI down.
+const box = (w: number, h: number): Array<[number, number]> => [
+  [0.4, 0.7],
+  [0.4 + w, 0.7],
+  [0.4 + w, 0.7 + h],
+  [0.4, 0.7 + h],
+];
+// Size gate (lib/scale.ts). Same defect, same severity: one fills a fifth of
+// the frame (a pothole a few metres ahead), the other is 2% across (the 13 px
+// speck from audit #13 that turned a stretch of Brooklyn Ave red at severity 4).
+const nearField: Detection = { ...det({ along: 10, id: 8, severity: 4 }), polygon: box(0.2, 0.2) };
+const distant: Detection = { ...det({ along: 10, id: 9, severity: 4 }), polygon: box(0.02, 0.02) };
+assert(
+  run(75, [nearField]).some((s) => s.grade === 'red'),
+  'a near-field severity-4 hazard still reddens its stretch'
+);
+assert(
+  run(75, [distant]).every((s) => s.grade === 'green' && s.detectionIds.length === 0),
+  'the same severity-4 hazard as a 2%-of-frame speck grades nothing'
+);
+
 const severe: Detection[] = [det({ along: 10, id: 7, severity: 5 })];
 assert(
   run(75, severe).some((s) => s.grade === 'red'),

@@ -18,6 +18,8 @@ original ──exiftool──► GPS samples {t, lat, lon}        (recorded in-c
    [chunker] windows of 3,000 frames with 150 frames of overlap
    [SAM 3.1]  "pothole" → {frameIndex, objectId, polygon}
    [filter]   ≥6 frames AND ≥0.6s → keep · IoU merge across the chunk seam
+   [scale]    < 2.5% of the frame across → "too small to judge", never classified
+   [dedupe]   the same audit's repeat sightings within 8 m → one row, worst severity
    [geo]      interpolate → GPS sample | null → overlay OCR | manual pin
    [consensus] across audits → same defect seen twice → corroborated · disputed
                one spelling per street · a second pass that agrees = verified
@@ -59,7 +61,8 @@ What the app does, function by function - the operator's view. Each one says whe
 
 - Filter by audit, type, **surface** (everywhere / street only / sidewalk), severity ≥, status
   or `needs review`; the header counts `57 of 57 hazards`, so a filter that hides half the
-  street says so.
+  street says so. Masks too small to judge are held out of that count and offered separately as
+  `12 too small · show` - one click reveals them, with a `TOO SMALL` chip (see section 5c).
 - Every row carries a severity badge, **the frame the hazard was found on**, its street, a
   corroboration badge (`2 passes`, or `disputed` when a second audit saw the same spot and
   disagreed), and a status pill you click to change `detected → verified → filed → detected` -
@@ -123,6 +126,28 @@ What the app does, function by function - the operator's view. Each one says whe
 - Both live on every queue row, next to Verify and File, and the audit header counts them:
   `12 detected · 3 verified · 1 filed` plus a red `2 rejected` when there are any.
 
+### 5c. Trust the evidence - size gate and duplicate collapse
+
+- A mask narrower than **2.5% of the frame** (~21 px at 854x480) or under **0.08% of its
+  area** is **too small to judge**: it leaves the queue, the route grade, the cross-audit
+  corroboration and every export, and is listed behind `N too small · show` instead. It is
+  never deleted, so a reviewer can reveal it and Verify or reject it.
+- Measured on this project's own 76 detections: **12 hidden**, including a 13x28 px mask that
+  had been filed at **severity 4** and turned a 22.9 m stretch of Brooklyn Ave red, plus masks
+  6-7 px tall that the classifier's own sentence described as "a thin linear marking with no
+  measurable depth". Audit #13 now grades **no red segments** at all.
+- The same rule runs at **scan time**, before the classifier: a speck is never sent to Spark, so
+  it costs nothing and cannot become a work order in the first place. Existing audits get the
+  verdict at **read time**, which is why fixing them cost $0 and no re-scan.
+- **One physical defect, one row.** Sightings from the *same* audit within **8 m** of each other
+  (same surface) collapse into one row that keeps the worst severity and records what it
+  absorbed - the queue shows `3 sightings`. This is not consensus: two audits are independent
+  witnesses; one camera passing the same broken patch three times is not three defects. On this
+  data the merge absorbed **26 duplicate sightings** into 14 rows.
+- Two things it deliberately will not do: merge across audits, and merge the worst row of a
+  cluster away. A rejected row and a too-small row are excluded from clustering entirely, so a
+  speck's severity can never become a real defect's grade.
+
 ### 6. Read the street - the map
 
 - Detection pins are coloured by severity; **sidewalk findings are hollow with a blue ring**,
@@ -142,8 +167,8 @@ What the app does, function by function - the operator's view. Each one says whe
 
 ### 7. Grade the route (RQSI)
 
-- Every **street** detection is snapped to a 100m window of the GPS track (rejected ones are
-  not part of the road at all, so they never enter the arithmetic): density
+- Every **street** detection is snapped to a 100m window of the GPS track (rejected and
+  too-small ones are not part of the road at all, so they never enter the arithmetic): density
   (severity-weighted defects per 100m) becomes `RQSI = 100 − density × K`, then a rubric
   grade - **red** for any severity ≥ 4 or a blocked-lane/cave-in ≥ 3, **yellow** for
   severity ≥ 2 or cracking, **green** when clean. Sidewalk findings are graded apart: a
@@ -156,7 +181,8 @@ What the app does, function by function - the operator's view. Each one says whe
 
 - Two audits that saw the same defect → **corroborated**, and that pair is promoted to
   `verified` on its own; two that disagree on what it is → **disputed**, which waits for a
-  human.
+  human. A mask too small to judge is never a witness on either side - twelve pixels from one
+  pass are not corroborated by twelve pixels from another.
 - Street names are canonicalised across passes (`Hart St` ≡ `Hart Street`) so an Open311
   export never carries both spellings, while a genuine disagreement (`Stuyvesant Ave` against
   the map's `Broadway`) is flagged rather than silently renamed.
@@ -324,6 +350,9 @@ SAM bills per video frame: **$0.20 / 1,000 frames**. That is why the pipeline tr
 separate 10fps analysis copy — a 10-minute drive is 6,000 frames instead of 18,000, about
 $1.20 rather than $3.60, and a pothole is still on screen for 10–20 frames, which is far more
 than the persistence filter needs.
+
+Specks are never billed: the size gate (section 5c) drops a too-small mask before classification,
+so the crop and its Spark call never happen.
 
 The spend readout in the header is the **spend ledger** ([`lib/spend.ts`](lib/spend.ts)): one
 row per charge, written the moment SAM or Spark bills it, so a crash, a restart, a re-run or a

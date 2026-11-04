@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { db, storageRoot } from './db';
 import { canonicalStreets } from './streets';
+import { mergeSameAudit } from './dedupe';
+import { tooSmall } from './scale';
 import type { Detection, GpsTrack, Job, JobStatus, Polygon } from './types';
 
 /**
@@ -239,18 +241,32 @@ export function getDetection(id: number): Detection | null {
   const row = db().prepare('SELECT * FROM detections WHERE id = ?').get(id) as
     | DetectionRow
     | undefined;
-  return row ? toDetection(row) : null;
+  return row ? withSize(toDetection(row)) : null;
+}
+
+/**
+ * Every read of a detection carries the size verdict (lib/scale.ts). Stamped
+ * here rather than at each call site so the dashboard, the audit page, the
+ * route grade and the exports cannot disagree about one row: a 13-pixel speck
+ * is the same speck everywhere.
+ */
+function withSize(d: Detection): Detection {
+  return { ...d, tooSmall: tooSmall(d.polygon) };
 }
 
 export function listAllDetections(): Detection[] {
-  return canonicalize(readAllDetections());
+  // Canonical street names first, then the within-audit collapse: two rows of
+  // one patch should be one row before anything counts them (lib/dedupe.ts).
+  return mergeSameAudit(canonicalize(readAllDetections()).map(withSize));
 }
 
 export function listDetections(jobId: number): Detection[] {
   const all = readAllDetections();
-  return canonicalize(
-    all.filter((d) => d.jobId === jobId),
-    all
+  return mergeSameAudit(
+    canonicalize(
+      all.filter((d) => d.jobId === jobId),
+      all
+    ).map(withSize)
   );
 }
 

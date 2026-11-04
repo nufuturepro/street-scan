@@ -85,6 +85,12 @@ export default function DetectionList({ detections, activeId, onSelect, onStatus
                   <Flag tone="amber">needs review</Flag>
                 )}
                 {d.note && <Flag tone="zinc">note</Flag>}
+                {d.tooSmall && d.reviewStatus !== 'rejected' && (
+                  <Flag tone="amber">too small</Flag>
+                )}
+                {(d.mergedIds?.length ?? 0) > 0 && (
+                  <Flag tone="zinc">{d.mergedIds!.length + 1} sightings</Flag>
+                )}
                 {d.osmDisagrees && <Flag tone="red">map disagrees</Flag>}
                 {(d.lat == null || d.lon == null) && <Flag tone="red">no geo</Flag>}
                 <Flag tone="zinc">{d.priority}</Flag>

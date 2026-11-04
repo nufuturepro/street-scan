@@ -1,6 +1,7 @@
 import { listDetections, getJob, readGps } from '@/lib/repo';
 import { toCsv, toGeoJson, buildWorkOrder, getProfile } from '@/lib/open311';
 import { buildRqsi, toRqsiGeoJson } from '@/lib/rqsi';
+import { isTooSmall } from '@/lib/scale';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +25,11 @@ export async function GET(req: Request, ctx: Ctx) {
   const format = (url.searchParams.get('format') ?? 'geojson').toLowerCase();
   // Rejected false positives never leave this app: they are not hazards, so
   // they are not in a CSV, a GeoJSON file, or a work-order payload a city
-  // could dispatch from.
+  // could dispatch from. Nor does a mask too small to judge - a work order cut
+  // from thirteen pixels is exactly the kind of filing that loses a city's
+  // trust in the tool.
   const detections = listDetections(jobId).filter(
-    (d) => d.reviewStatus !== 'rejected'
+    (d) => d.reviewStatus !== 'rejected' && !isTooSmall(d)
   );
   const profile = url.searchParams.get('profile') ?? undefined;
 

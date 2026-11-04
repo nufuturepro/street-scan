@@ -1,4 +1,5 @@
 import { SEGMENT_LENGTH_M, SEGMENT_SNAP_RADIUS_M, SEGMENT_OFF_ROUTE_M, RQSI_DENSITY_K } from './config';
+import { isTooSmall } from './scale';
 import type { Detection, GpsSample, GpsTrack, HazardType, RouteSegment, RqsiGrade } from './types';
 
 /**
@@ -205,7 +206,13 @@ export function buildRqsi(opts: {
   // call site) is what keeps the dashboard, the audit page and both exports
   // from disagreeing about the same street.
   const detections = opts.detections.filter(
-    (d) => d.surface !== 'sidewalk' && d.reviewStatus !== 'rejected'
+    (d) =>
+      d.surface !== 'sidewalk' &&
+      d.reviewStatus !== 'rejected' &&
+      // Size gate (lib/scale.ts): a mask too small to judge is not evidence a
+      // street is bad. This is the line that stopped a 13x28 px speck from
+      // reddening a stretch of Brooklyn Ave at severity 4.
+      !isTooSmall(d)
   );
   const edges = splitRoute(track.samples);
   if (!edges.length) return [];

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { TAXONOMY } from './taxonomy';
+import { isTooSmall } from './scale';
 import type { Detection, Open311Shape } from './types';
 
 /**
@@ -93,6 +94,11 @@ export function buildWorkOrder(d: Detection, profileName?: string): Open311Reque
       street_source_disagreement: d.osmDisagrees,
       review_status: d.reviewStatus,
       reviewer_note: d.note || null,
+      // How the app judged its own evidence: a city asking "why is this a
+      // hazard?" gets the mask's size verdict and how many sightings of the
+      // same patch were folded into this row.
+      too_small: isTooSmall(d),
+      merged_sightings: (d.mergedIds?.length ?? 0) + 1,
       needs_review: d.needsReview,
       generator: 'StreetScan',
       endpoint: profile.endpoint,

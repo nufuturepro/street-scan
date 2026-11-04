@@ -1,4 +1,5 @@
 import { CONSENSUS_RADIUS_M, SEGMENT_MERGE_M } from './config';
+import { isTooSmall } from './scale';
 import { haversineM } from './rqsi';
 import type {
   Detection,
@@ -77,6 +78,9 @@ export function groupHazards(
     // false positive corroborate (or dispute) a real hazard in another pass -
     // the one way a reviewer's verdict could still change a grade.
     if (d.reviewStatus === 'rejected') continue;
+    // Neither is a mask too small to judge (lib/scale.ts): promising twelve
+    // pixels from one pass are not corroborated by twelve pixels from another.
+    if (isTooSmall(d)) continue;
     const point = { lat: d.lat, lon: d.lon };
 
     const [row, col] = cellKey(point.lat, point.lon, radiusM)

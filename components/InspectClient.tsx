@@ -49,6 +49,9 @@ export default function InspectClient({
   const [data, setData] = useState<JobResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
+  // Masks the size gate hid (lib/scale.ts). Revealing one is a read-only
+  // decision until the reviewer rejects or verifies it.
+  const [showTiny, setShowTiny] = useState(false);
   // Fixed at mount: the deep link seeks once, then ordinary selection takes
   // over (VideoPane prefers the active hazard's own timestamp).
   const [seekMs] = useState<number | null>(initialSeekMs);
@@ -155,13 +158,26 @@ export default function InspectClient({
     progress != null && progress.stage !== 'done' && progress.stage !== 'failed';
   const playback = data?.job.playbackPath ? `/api/files/${id}/playback.mp4` : null;
 
-  const counts = data?.counts ?? { detected: 0, verified: 0, filed: 0, rejected: 0 };
+  // Counted from the rows on screen, not from the table: the read layer merges
+  // one physical defect into one row (lib/dedupe.ts) and the API's counts are
+  // per raw row, so using those would claim 13 behind a list of 9. Speck-sized
+  // masks are counted separately - they are not work, they are a size verdict.
+  const judgedRows = detections.filter((d) => !d.tooSmall);
+  const counts = {
+    detected: judgedRows.filter((d) => d.reviewStatus === 'detected').length,
+    verified: judgedRows.filter((d) => d.reviewStatus === 'verified').length,
+    filed: judgedRows.filter((d) => d.reviewStatus === 'filed').length,
+  };
   // Rejected entries are looking for nothing: they are a verdict already made,
   // so they must not pad the "need review" badge.
   const needsReview = detections.filter(
-    (d) => d.needsReview && d.reviewStatus !== 'rejected'
+    (d) => d.needsReview && d.reviewStatus !== 'rejected' && !d.tooSmall
   ).length;
-  const rejected = counts.rejected ?? 0;
+  const rejected = detections.filter((d) => d.reviewStatus === 'rejected').length;
+  const tinyCount = detections.filter(
+    (d) => d.tooSmall && d.reviewStatus !== 'rejected'
+  ).length;
+  const listed = showTiny ? detections : detections.filter((d) => !d.tooSmall);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -264,11 +280,26 @@ export default function InspectClient({
               />
             </div>
           )}
-          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-            Detections
-          </h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              Detections
+            </h2>
+            {tinyCount > 0 && (
+              <button
+                onClick={() => setShowTiny((v) => !v)}
+                title="masks under 2.5% of the frame across - out of the grade and the exports"
+                className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                  showTiny
+                    ? 'border-amber-700 bg-amber-950 text-amber-300'
+                    : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {showTiny ? 'hide too small' : `${tinyCount} too small · show`}
+              </button>
+            )}
+          </div>
           <DetectionList
-            detections={detections}
+            detections={listed}
             activeId={activeId}
             onSelect={select}
             onStatus={(detectionId, status) => setStatus(detectionId, status)}

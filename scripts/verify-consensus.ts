@@ -33,6 +33,7 @@ import {
   routeCrossings,
 } from '../lib/consensus';
 import { canonicalStreets, streetKey } from '../lib/streets';
+import { mergeSameAudit } from '../lib/dedupe';
 import type { Detection, GpsSample, GpsTrack, HazardType, RouteSegment } from '../lib/types';
 
 function assert(cond: boolean, msg: string): void {
@@ -166,6 +167,24 @@ assert(
   `two passes on the same sidewalk defect still corroborate - got ${sameSidewalk.length}/${sameSidewalk[0]?.state}`
 );
 
+// A mask too small to judge (lib/scale.ts) is not a witness either. Twelve
+// pixels from a distant speck are not corroborated by twelve pixels from
+// another pass - and grouping one would let a speck earn an automatic Verify.
+const speck: Array<[number, number]> = [
+  [0.4, 0.4],
+  [0.42, 0.4],
+  [0.42, 0.42],
+  [0.4, 0.42],
+];
+const speckWitness = groupHazards([
+  det({ id: 1, jobId: 4, east: 0, type: 'pothole', severity: 4 }),
+  { ...det({ id: 2, jobId: 6, east: 6, type: 'pothole' }), polygon: speck },
+]);
+assert(
+  speckWitness.length === 1 && speckWitness[0].passes === 1,
+  `a too-small sighting corroborates nothing - got ${speckWitness.length} group(s), passes ${speckWitness[0]?.passes}`
+);
+
 // A rejected sighting is not a witness: a reviewer who threw out one pass's
 // false positive must not still have it corroborate (or dispute) the other
 // pass's real hazard.
@@ -223,6 +242,48 @@ const radiusEdge = groupHazards([
 assert(
   radiusEdge.length === 2,
   `inside the radius matches, just outside does not - got ${radiusEdge.length}`
+);
+
+/* --------------------- 1b. duplicates within one audit --------------------- */
+
+console.log('\n# within-audit duplicates');
+
+const onePatch = [
+  det({ id: 1, jobId: 4, east: 0, type: 'crack', severity: 2 }),
+  det({ id: 2, jobId: 4, east: 3, type: 'pothole', severity: 4 }),
+  det({ id: 3, jobId: 4, east: 40, type: 'crack', severity: 1 }),
+];
+const collapsed = mergeSameAudit(onePatch);
+assert(
+  collapsed.length === 2,
+  `two sightings 3 m apart in ONE audit are one work order - got ${collapsed.length}`
+);
+assert(
+  collapsed[0].severity === 4 && collapsed[0].hazardType === 'pothole',
+  `the cluster keeps the worst reading - got severity ${collapsed[0].severity} ${collapsed[0].hazardType}`
+);
+assert(
+  collapsed[0].mergedIds?.join(',') === '2',
+  `the absorbed sighting is recorded, not lost - got ${JSON.stringify(collapsed[0].mergedIds)}`
+);
+assert(
+  collapsed.some((d) => d.id === 3),
+  'a defect 40 m away is untouched'
+);
+
+assert(
+  mergeSameAudit([
+    det({ id: 1, jobId: 4, east: 0 }),
+    det({ id: 2, jobId: 6, east: 0 }),
+  ]).length === 2,
+  'two AUDITS at the same spot are never merged - that is consensus, the opposite claim'
+);
+assert(
+  mergeSameAudit([
+    det({ id: 1, jobId: 4, east: 0, surface: 'roadway' }),
+    det({ id: 2, jobId: 4, east: 3, surface: 'sidewalk' }),
+  ]).length === 2,
+  'a street defect and a sidewalk defect stay separate'
 );
 
 /* ---------------------------- 2. segment merge ---------------------------- */

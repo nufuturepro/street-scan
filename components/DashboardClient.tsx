@@ -18,7 +18,7 @@ import { GRADE_COLOR, GRADE_LABEL, summarize } from '@/lib/rqsi';
 import { SEVERITY_COLORS } from './mask';
 import StillPopup from './StillPopup';
 import { usd } from '@/lib/cost';
-import { SAM_USD_PER_1000_FRAMES } from '@/lib/config';
+import { MIN_MASK_WIDTH_FRAC, SAM_USD_PER_1000_FRAMES } from '@/lib/config';
 
 const HazardMap = dynamic(() => import('./HazardMap'), {
   ssr: false,
@@ -80,6 +80,7 @@ function passFilters(
     minSeverity: string;
     jobId: string;
     reviewOnly: boolean;
+    showTiny: boolean;
   },
   activeType: string | null
 ): boolean {
@@ -88,6 +89,10 @@ function passFilters(
   // so it must not be counted, mapped or filed. It stays visible (and
   // restorable) on its own audit page, which is where the verdict was made.
   if (d.reviewStatus === 'rejected') return false;
+  // Too small to judge (lib/scale.ts): hidden unless the reviewer asks for
+  // them, because a 13-pixel mask cannot support a work order - but never
+  // deleted, so the call stays auditable.
+  if (d.tooSmall && !f.showTiny) return false;
   if (activeType && d.hazardType !== activeType) return false;
   if (f.status !== 'all' && d.reviewStatus !== f.status) return false;
   // 'street' is the default view: sidewalk findings are kept and shown,
@@ -123,6 +128,9 @@ export default function DashboardClient() {
   const [minSeverity, setMinSeverity] = useState('1');
   const [jobId, setJobId] = useState('all');
   const [reviewOnly, setReviewOnly] = useState(false);
+  // Reveal the masks the size gate hid. Off by default: the queue is a work
+  // list, and a speck is not work until someone says it is.
+  const [showTiny, setShowTiny] = useState(false);
   // 'live' | 'fixture' - a fixture run bills $0, so its export row shows what
   // the audit would have cost rather than pretending it was free.
   const [mode, setMode] = useState('live');
@@ -196,11 +204,11 @@ export default function DashboardClient() {
       detections.filter((d) =>
         passFilters(
           d,
-          { status, surface, minSeverity, jobId, reviewOnly },
+          { status, surface, minSeverity, jobId, reviewOnly, showTiny },
           type === 'all' ? null : type
         )
       ),
-    [detections, type, status, surface, minSeverity, jobId, reviewOnly]
+    [detections, type, status, surface, minSeverity, jobId, reviewOnly, showTiny]
   );
 
   const setActive = (id: number) => {
@@ -249,6 +257,12 @@ export default function DashboardClient() {
     await load();
   };
 
+  // Masks the size gate is holding back, counted over every detection so the
+  // number does not move when an unrelated filter changes.
+  const tinyCount = detections.filter(
+    (d) => d.tooSmall && d.reviewStatus !== 'rejected'
+  ).length;
+
   const unplaced = filtered.filter((d) => d.lat == null || d.lon == null);
   const activeJobNames = new Map(
     scanning.map((a) => [a.jobId, jobs.find((j) => j.id === a.jobId)?.name ?? `#${a.jobId}`])
@@ -264,12 +278,18 @@ export default function DashboardClient() {
   const byType = useMemo(() => {
     const acc: Record<string, number> = {};
     for (const d of detections) {
-      if (!passFilters(d, { status, surface, minSeverity, jobId, reviewOnly }, null))
+      if (
+        !passFilters(
+          d,
+          { status, surface, minSeverity, jobId, reviewOnly, showTiny },
+          null
+        )
+      )
         continue;
       acc[d.hazardType] = (acc[d.hazardType] ?? 0) + 1;
     }
     return acc;
-  }, [detections, status, surface, minSeverity, jobId, reviewOnly]);
+  }, [detections, status, surface, minSeverity, jobId, reviewOnly, showTiny]);
 
   const jobsWithDetections = jobs.filter((j) => detections.some((d) => d.jobId === j.id));
 
@@ -355,8 +375,25 @@ export default function DashboardClient() {
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold">Dispatch</h1>
         <span className="text-xs text-zinc-500">
-          {filtered.length} of {detections.length} hazards
+          {filtered.length} of {detections.length - (showTiny ? 0 : tinyCount)} hazards
         </span>
+        {/*
+          The size gate's bill of lading. Hidden by default, one click to see
+          them, never deleted: a reviewer can decide a speck is real.
+        */}
+        {tinyCount > 0 && (
+          <button
+            onClick={() => setShowTiny((v) => !v)}
+            title={`masks under ${Math.round(MIN_MASK_WIDTH_FRAC * 100)}% of the frame across - too small to judge`}
+            className={`rounded border px-2 py-0.5 text-[11px] ${
+              showTiny
+                ? 'border-amber-700 bg-amber-950 text-amber-300'
+                : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {showTiny ? `hide ${tinyCount} too small` : `${tinyCount} too small · show`}
+          </button>
+        )}
 
         <div className="ml-auto flex flex-wrap items-center gap-3">
           <Select
@@ -684,6 +721,14 @@ export default function DashboardClient() {
                           title="on the sidewalk - not part of the street grade"
                         >
                           walk
+                        </span>
+                      )}
+                      {d.tooSmall && (
+                        <span
+                          className="rounded border border-amber-700 bg-amber-950 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300"
+                          title="mask too small to judge - out of the grade and the exports"
+                        >
+                          too small
                         </span>
                       )}
                     </div>

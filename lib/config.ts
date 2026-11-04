@@ -64,6 +64,32 @@ export const MERGE_IOU_THRESHOLD = 0.3;
 export const REVIEW_CONFIDENCE_THRESHOLD = 0.75;
 
 /**
+ * Size gate: a mask narrower than this fraction of the frame is too small to
+ * judge, and so is one under MIN_MASK_AREA_FRAC of the frame's area.
+ *
+ * Measured on this project's own 76 detections rather than guessed. At 854x480
+ * the width floor is ~21 px: it catches the 13x28 px speck that audit #13
+ * filed at severity 4 and turned a strip of Brooklyn Ave red, plus three other
+ * 10-20 px masks, while keeping every defect that fills even a tenth of the
+ * frame. A real pothole 3 m from the bumper is 80-200 px across, so the floor
+ * sits an order of magnitude clear of honest near-field evidence.
+ */
+export const MIN_MASK_WIDTH_FRAC = 0.025;
+
+/** ...and the same verdict for tall, thin masks that slip past the width test. */
+export const MIN_MASK_AREA_FRAC = 0.0008;
+
+/**
+ * Two detections from the SAME audit this close together are one defect filed
+ * twice: SAM gives each approach distance a new object id, so one broken patch
+ * becomes three or four work orders. Measured on audit #13: its two knots sit
+ * 0.9-5.1 m apart, and the nearest pair of genuinely separate defects on the
+ * street is further than this. Two audits are never merged here - that is
+ * consensus, and it is the opposite claim.
+ */
+export const SAME_AUDIT_MERGE_M = 8;
+
+/**
  * RQSI: length of one graded route segment, in metres.
  *
  * Measured, not guessed: our own audit track is 78 m long (68 s of slow
