@@ -97,14 +97,20 @@ What the app does, function by function - the operator's view. Each one says whe
   sample frame. The timeline below carries one severity-coloured tick per hazard - click to
   jump.
 - Beside it sits the live Open311 payload: correct the latitude, longitude, street, cross
-  street - or **reclassify the hazard's type and severity** - then **Apply corrections** writes
+  street, **rewrite the description**, **add a reviewer note** - or **reclassify the hazard's
+  type and severity** - then **Apply corrections** writes
   it back and the payload redraws with the corrected service code and priority. An emptied
   cross street **clears** a wrong one (omitting the field leaves it alone). **Copy JSON**
   takes it elsewhere. **full page ↗** opens the dedicated inspect view; **✕ Close** hands the
   slot back to the map.
 - Type and severity are editable because they are the fields a pin fix cannot repair: a manhole
-  the detector called a pothole ships the city the wrong service code, ranks at the wrong
-  priority, and charges a defect to a street that does not have one.
+  the detector called a pothole ships the wrong service code, ranks at the wrong priority, and
+  charges a defect to a street that does not have one.
+- The two texts are separate on purpose. **Description** starts as the classifier's sentence and
+  is editable in place - a reviewer looking at the frame knows more than the model did.
+  **Reviewer note** is theirs alone, appended to the payload as `Reviewer note: …` and carried
+  in the exports as its own column, so the record never mixes what a model said with what a
+  person added. A corrected row wears a `note` chip in the queue.
 
 ### 5b. Correct or throw out an entry - `/inspect/:id`
 
@@ -304,7 +310,7 @@ and only a corroborated pair - never a disputed one - earns a verification.
 | `POST /api/jobs/:id/process` | enqueues a scan (JSON, idempotent) - the queue runs it; any page reads progress from the job/dashboard GETs |
 | `GET /api/dashboard` | every job + detection + hazard group + RQSI segment + cross-audit intersection, plus the live queue snapshot, in one request |
 | `GET /api/jobs/:id` | job + detections + counts + GPS + cost + live queue progress |
-| `PATCH /api/detections/:id` | the human correction step: status (including `detected` = undo, and `rejected` = not a hazard), manual pin, street/cross-street, hazard type + severity (service code and priority follow the reclassification) |
+| `PATCH /api/detections/:id` | the human correction step: status (including `detected` = undo, and `rejected` = not a hazard), manual pin, street/cross-street, hazard type + severity (service code and priority follow the reclassification), rewritten description, reviewer note |
 | `GET /api/detections/:id/still` | the frame a hazard was found on - cut from playback on first request, then cached |
 | `GET /api/jobs/:id/export?format=` | `csv` · `geojson` · `open311` · `rqsi` |
 | `GET /api/files/:id/:name` | Range-aware video streaming (206) so scrubbing works |

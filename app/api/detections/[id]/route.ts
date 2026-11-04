@@ -79,6 +79,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
     /** a reviewer's reclassification - see the "not a hazard" case in types.ts */
     hazardType?: Detection['hazardType'];
     severity?: Detection['severity'];
+    /** a rewritten classifier sentence, and/or the reviewer's extra detail */
+    description?: string | null;
+    note?: string | null;
   } | null;
   if (!body) return NextResponse.json({ error: 'invalid json' }, { status: 400 });
 
@@ -101,14 +104,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
   const status =
     body.status && STATUSES.includes(body.status) ? body.status : existing.reviewStatus;
 
-  if (
-    (body.crossStreet !== undefined && body.crossStreet !== null && typeof body.crossStreet !== 'string') ||
-    (body.street !== undefined && body.street !== null && typeof body.street !== 'string')
-  ) {
-    return NextResponse.json(
-      { error: 'street and crossStreet must be strings or null' },
-      { status: 400 }
-    );
+  const textFields = ['street', 'crossStreet', 'description', 'note'] as const;
+  for (const field of textFields) {
+    const value = body[field];
+    if (value !== undefined && value !== null && typeof value !== 'string') {
+      return NextResponse.json(
+        { error: `${field} must be a string or null` },
+        { status: 400 }
+      );
+    }
   }
 
   const patch: DetectionEdit = {
@@ -117,6 +121,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     // Explicit null clears a wrong name; omitting the key leaves it alone.
     street: body.street === undefined ? undefined : body.street,
     crossStreet: body.crossStreet === undefined ? undefined : body.crossStreet,
+    description: body.description === undefined ? undefined : body.description,
+    note: body.note === undefined ? undefined : body.note,
     needsReview: body.needsReview,
     severity: body.severity,
   };

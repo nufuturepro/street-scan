@@ -155,6 +155,8 @@ export async function classifyTrack(opts: {
     street: classification.streetContext.street ?? osmStreet,
     crossStreet: classification.streetContext.crossStreet ?? null,
     description: classification.justification || spec.label,
+    // Nobody has reviewed it yet, so there is no note; a reviewer adds one.
+    note: '',
     needsReview,
     reviewStatus: 'detected',
     polygon: track.best.polygon,

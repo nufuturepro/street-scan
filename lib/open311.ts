@@ -73,7 +73,10 @@ export function buildWorkOrder(d: Detection, profileName?: string): Open311Reque
       // A sidewalk finding must not read like a street defect in a dispatch
       // queue - the prefix is what a human triaging the ticket sees first.
       `${onSidewalk ? 'Sidewalk: ' : ''}${label}. Severity ${d.severity}/5, confidence ${(d.confidence * 100).toFixed(0)}%. ` +
-      `${d.description}`,
+      `${d.description}` +
+      // The reviewer's detail travels with the ticket, labelled, so a crew
+      // never has to guess which sentence a human wrote and which a model did.
+      (d.note ? ` Reviewer note: ${d.note}` : ''),
     first_name: 'StreetScan',
     last_name: 'Audit',
     phone: '',
@@ -89,6 +92,7 @@ export function buildWorkOrder(d: Detection, profileName?: string): Open311Reque
       osm_street: d.osmStreet,
       street_source_disagreement: d.osmDisagrees,
       review_status: d.reviewStatus,
+      reviewer_note: d.note || null,
       needs_review: d.needsReview,
       generator: 'StreetScan',
       endpoint: profile.endpoint,
@@ -123,6 +127,7 @@ export function toGeoJson(detections: Detection[]): string {
           osm_street: d.osmStreet,
           osm_disagrees: d.osmDisagrees,
           needs_review: d.needsReview,
+          reviewer_note: d.note || null,
         },
       })),
     },
@@ -148,6 +153,9 @@ const CSV_COLUMNS = [
   'osm_street',
   'osm_disagrees',
   't_ms',
+  // Appended rather than slotted in beside `status`: existing spreadsheets
+  // keep the column order they were built against.
+  'reviewer_note',
 ] as const;
 
 export function toCsv(detections: Detection[]): string {
@@ -174,6 +182,7 @@ export function toCsv(detections: Detection[]): string {
       d.osmStreet,
       d.osmDisagrees,
       d.tMs,
+      d.note,
     ]
       .map(esc)
       .join(',')

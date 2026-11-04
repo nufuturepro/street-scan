@@ -50,6 +50,7 @@ type DetectionRow = {
   street: string | null;
   cross_street: string | null;
   description: string | null;
+  reviewer_note: string | null;
   needs_review: number;
   review_status: string;
   polygon_json: string;
@@ -112,6 +113,7 @@ function toDetection(r: DetectionRow): Detection {
     street: r.street,
     crossStreet: r.cross_street,
     description: r.description ?? '',
+    note: r.reviewer_note ?? '',
     needsReview: !!r.needs_review,
     reviewStatus: r.review_status as Detection['reviewStatus'],
     polygon: JSON.parse(r.polygon_json) as Polygon,
@@ -314,7 +316,11 @@ export type DetectionEdit = Partial<
     | 'priority'
     | 'needsReview'
   >
->;
+> & {
+  /** null clears the text; undefined leaves it alone */
+  description?: string | null;
+  note?: string | null;
+};
 
 /** camelCase patch key -> column. Order is the order they are written in. */
 const EDIT_COLUMNS: Array<[keyof DetectionEdit, string]> = [
@@ -326,6 +332,8 @@ const EDIT_COLUMNS: Array<[keyof DetectionEdit, string]> = [
   ['severity', 'severity'],
   ['serviceCode', 'service_code'],
   ['priority', 'priority'],
+  ['description', 'description'],
+  ['note', 'reviewer_note'],
 ];
 
 /**

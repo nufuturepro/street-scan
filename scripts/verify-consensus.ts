@@ -93,6 +93,7 @@ function det(opts: DetOpts): Detection {
     street: null,
     crossStreet: null,
     description: '',
+    note: '',
     needsReview: false,
     reviewStatus: 'detected',
     polygon: [],

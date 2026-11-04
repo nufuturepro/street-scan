@@ -26,7 +26,10 @@ export type Detection = {
   lon: number | null;
   street: string | null;
   crossStreet: string | null;
+  /** the classifier's sentence - editable, because a reviewer often knows better */
   description: string;
+  /** the reviewer's addition: detail the model never had. Empty when none. */
+  note: string;
   needsReview: boolean;
   /**
    * 'rejected' is the human's "this is not a hazard" - a false positive the

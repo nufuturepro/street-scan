@@ -84,6 +84,7 @@ export default function DetectionList({ detections, activeId, onSelect, onStatus
                 {d.needsReview && d.reviewStatus !== 'rejected' && (
                   <Flag tone="amber">needs review</Flag>
                 )}
+                {d.note && <Flag tone="zinc">note</Flag>}
                 {d.osmDisagrees && <Flag tone="red">map disagrees</Flag>}
                 {(d.lat == null || d.lon == null) && <Flag tone="red">no geo</Flag>}
                 <Flag tone="zinc">{d.priority}</Flag>

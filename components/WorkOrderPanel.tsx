@@ -13,6 +13,10 @@ export type DetectionEditPatch = {
   crossStreet?: string | null;
   hazardType?: HazardType;
   severity?: Detection['severity'];
+  /** a rewritten classifier sentence */
+  description?: string;
+  /** the reviewer's extra detail - '' clears it */
+  note?: string;
 };
 
 type Props = {
@@ -48,6 +52,8 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
   );
   const [street, setStreet] = useState(() => detection?.street ?? '');
   const [crossStreet, setCrossStreet] = useState(() => detection?.crossStreet ?? '');
+  const [description, setDescription] = useState(() => detection?.description ?? '');
+  const [note, setNote] = useState(() => detection?.note ?? '');
   const [hazardType, setHazardType] = useState<HazardType | ''>(
     () => detection?.hazardType ?? ''
   );
@@ -110,6 +116,13 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
     // effect of clicking Save.
     if (hazardType && hazardType !== detection.hazardType) next.hazardType = hazardType;
     if (severity && severity !== detection.severity) next.severity = severity;
+    // Both texts are compared, not just checked for content: a reviewer who
+    // deletes a wrong sentence has to be able to save that, and an untouched
+    // box sends nothing.
+    const desc = description.trim();
+    if (desc !== detection.description) next.description = desc;
+    const noteText = note.trim();
+    if (noteText !== (detection.note ?? '')) next.note = noteText;
 
     if (!Object.keys(next).length) return;
     await onPatch(detection.id!, next);
@@ -215,6 +228,38 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
             onChange={(e) => setCrossStreet(e.target.value)}
             placeholder="—"
             className={field}
+          />
+        </label>
+
+        {/*
+          The two texts a city actually reads. `description` starts as the
+          classifier's sentence and is editable, because a reviewer looking at
+          the frame knows more than the model did. `note` is theirs alone -
+          kept separate so the record never mixes what a model said with what
+          a person added.
+        */}
+        <label className="col-span-3 block">
+          <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+            Description (goes into the work order)
+          </span>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="what the classifier said - rewrite it if it is wrong"
+            className={`${field} resize-y leading-relaxed`}
+          />
+        </label>
+        <label className="col-span-3 block">
+          <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+            Reviewer note (extra detail for the crew)
+          </span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="access, surrounding damage, what the classifier missed - appended to the description"
+            className={`${field} resize-y leading-relaxed`}
           />
         </label>
         <div className="col-span-2 flex items-end justify-end gap-2">

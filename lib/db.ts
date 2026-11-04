@@ -114,6 +114,16 @@ function open(): DatabaseSync {
     /* column already there */
   }
 
+  // The reviewer's own words: `description` holds what the classifier said (and
+  // is now editable), this holds the extra detail a human adds - access notes,
+  // what a crew will actually find, why they reclassified. Kept separate from
+  // the model's sentence so the two never get confused in the record.
+  try {
+    db.exec(`ALTER TABLE detections ADD COLUMN reviewer_note TEXT`);
+  } catch {
+    /* column already there */
+  }
+
   seedLegacySpend(db);
   return db;
 }
