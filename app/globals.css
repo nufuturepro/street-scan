@@ -1,19 +1,61 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/*
+ * One palette for the whole app.
+ *
+ * Deep aubergine ground, plum panels, rose for the primary action and amber for
+ * anything still moving (a scan, a stretch that needs a look). The severity ramp
+ * and the RQSI grades below are NOT part of the theme: they are semantic, and a
+ * pothole must stay the same orange on every screen.
+ */
 :root {
-  --background: #09090b;
-  --foreground: #f4f4f5;
+  --background: #150b1d;
+  --foreground: #f7eefb;
+
+  --bg: #150b1d;
+  --surface: #24122f;
+  --surface-2: #2f1a3d;
+  --raised: #3a2149;
+  --line: #3d2551;
+  --line-soft: #321c42;
+  --accent: #ff2e63;
+  --accent-dim: #c9204e;
+  --gold: #f5a623;
+  --ink: #f7eefb;
+  --muted: #a98ab8;
+  --muted-2: #7f648f;
+  --good: #34d399;
+  --warn: #f5a623;
+  --bad: #ff5470;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-linesoft: var(--line-soft);
+  --color-accent: var(--accent);
+  --color-accentdim: var(--accent-dim);
+  --color-gold: var(--gold);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-muted2: var(--muted-2);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background:
+    radial-gradient(1100px 520px at 8% -12%, rgb(255 46 99 / 0.13), transparent 62%),
+    radial-gradient(900px 480px at 88% -6%, rgb(148 68 255 / 0.12), transparent 58%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--ink);
   font-family:
     ui-sans-serif,
     system-ui,
@@ -25,33 +67,115 @@ body {
     sans-serif;
 }
 
+::selection {
+  background: rgb(255 46 99 / 0.35);
+  color: #fff;
+}
+
+/* A thin plum scrollbar, so a long queue does not grow a bright grey rail. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--raised) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--raised);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * Card + label primitives. Every panel on every page is one of these, which is
+ * how four screens get the same surface, radius and hairline without four
+ * copies of the same class string drifting apart.
+ */
+.panel {
+  border-radius: 0.85rem;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface) 90%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset;
+}
+.panel-flat {
+  border-radius: 0.85rem;
+  border: 1px solid var(--line-soft);
+  background: rgb(21 11 29 / 0.55);
+}
+.label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.hairline {
+  border-color: var(--line);
+}
+
+/* Default control look: selects, small buttons, inputs. */
+.control {
+  border-radius: 0.45rem;
+  border: 1px solid var(--line);
+  background: rgb(21 11 29 / 0.6);
+  color: var(--ink);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+.control:hover {
+  border-color: var(--raised);
+}
+.control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sev-1 { background: #71717a; }
+.sev-2 { background: #0ea5e9; }
+.sev-3 { background: var(--gold); }
+.sev-4 { background: #f97316; }
+.sev-5 { background: var(--bad); }
+
 /* Leaflet draws its own controls; keep them readable on a dark map. */
 .leaflet-container {
-  background: #18181b;
+  background: #1d1026;
   font: inherit;
 }
 .leaflet-control-attribution {
-  background: rgb(9 9 10 / 0.75) !important;
-  color: #a1a1aa;
+  background: rgb(21 11 29 / 0.78) !important;
+  color: var(--muted-2);
 }
 .leaflet-control-attribution a {
-  color: #a1a1aa;
+  color: var(--muted);
 }
 .leaflet-bar a {
-  background: #27272a;
-  color: #f4f4f5;
-  border-bottom-color: #3f3f46;
+  background: var(--surface-2);
+  color: var(--ink);
+  border-bottom-color: var(--line);
 }
 .leaflet-bar a:hover {
-  background: #3f3f46;
+  background: var(--raised);
 }
-
-/* Severity ramp, used everywhere a hazard is badged. */
-.sev-1 { background: #3f3f46; }
-.sev-2 { background: #0ea5e9; }
-.sev-3 { background: #f59e0b; }
-.sev-4 { background: #f97316; }
-.sev-5 { background: #ef4444; }
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--surface-2);
+  color: var(--ink);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+}
+.leaflet-tooltip {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.leaflet-tooltip-top:before {
+  border-top-color: var(--line);
+}
 
 @keyframes pulse-soft {
   0%, 100% { opacity: 1; }

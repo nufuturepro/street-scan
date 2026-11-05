@@ -54,10 +54,10 @@ export default function StillPopup({ detection, rect, onReview }: Props) {
     /* z-[600]: above the sticky header (500) and, with the map now isolated
        in its own stacking context (see HazardMap), above the map itself. */
     <div
-      className="fixed z-[600] w-64 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl shadow-black/50"
+      className="fixed z-[600] w-64 overflow-hidden panel bg-bg shadow-xl shadow-black/50"
       style={{ left, top }}
     >
-      <div className="relative bg-zinc-800">
+      <div className="relative bg-surface2">
         <img
           src={`/api/detections/${detection.id}/still`}
           alt=""
@@ -77,20 +77,20 @@ export default function StillPopup({ detection, rect, onReview }: Props) {
       </div>
       <div className="px-2.5 py-2">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-xs capitalize text-zinc-200">
+          <span className="truncate text-xs capitalize text-ink">
             {detection.hazardType.replace('_', '-')}
           </span>
-          <span className="shrink-0 text-[10px] text-zinc-500">
+          <span className="shrink-0 text-[10px] text-muted">
             sev {detection.severity} · {Math.round(detection.confidence * 100)}%
           </span>
         </div>
-        <div className="truncate text-[11px] text-zinc-500">
+        <div className="truncate text-[11px] text-muted">
           {[detection.street, detection.crossStreet].filter(Boolean).join(' @ ') ||
             'location not placed'}
         </div>
         <button
           onClick={() => onReview(detection.id!)}
-          className="mt-2 w-full rounded border border-amber-700 bg-amber-950/60 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-900/60"
+          className="mt-2 w-full rounded border border-gold/40 bg-gold/10/60 px-2 py-1 text-[11px] text-gold hover:bg-gold/15"
         >
           Review video →
         </button>

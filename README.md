@@ -32,8 +32,10 @@ original ──exiftool──► GPS samples {t, lat, lon}        (recorded in-c
 
 What the app does, function by function - the operator's view. Each one says where it lives.
 
-### 1. Ingest footage - `/`
+### 1. Ingest footage - Dispatch (`/`), **+ New audit**
 
+- Uploading lives on Dispatch in a drawer, so starting a scan never navigates away from the
+  queue you were reading. The rail's `+` (or `/?new=1`) opens it from any page.
 - Drag a clip in (or click to choose): MP4/MOV/M4V, streamed raw rather than multipart, so a
   10-minute 4K upload never buffers in memory and the progress bar is real.
 - Optionally attach the **original** recording as the GPS source - a second upload
@@ -46,7 +48,7 @@ What the app does, function by function - the operator's view. Each one says whe
 ### 2. Run an audit - the scan queue (`lib/queue.ts`)
 
 - Uploads enqueue automatically; up to `SCAN_CONCURRENCY` (2) run at once, the rest wait in
-  FIFO order. The **Scanning** strip on `/dashboard` shows every running and queued job with
+  FIFO order. The **Scanning** strip on Dispatch shows every running and queued job with
   its stage and progress - no page needs to stay open on any of them.
 - `/inspect/:id` polls the same queue snapshot instead of owning the run: stage bar,
   `queued - position 2`, and **Retry** on failure. Opening a legacy job that predates the
@@ -57,10 +59,20 @@ What the app does, function by function - the operator's view. Each one says whe
   (`pothole, cave_in, crack, blocked_lane, debris`) live in
   [`lib/taxonomy.ts`](lib/taxonomy.ts) and [`lib/config.ts`](lib/config.ts).
 
-### 3. Triage in the queue - `/dashboard`
+### 3. Dispatch - `/`
+
+- One page for the whole shift. Four KPI tiles (hazards in view, route RQSI, reviewed vs on
+  file, estimated spend), then three charts drawn straight from the same payload: the **route
+  profile** (one bar per graded stretch, width = metres, height = RQSI, click to select the
+  stretch), **spend by audit** (click a bar to filter the page), and the **severity mix**
+  (click a bar to set the severity floor). Below them, the map and the queue; below those, an
+  **Audits** table with every clip's status, frames, hazards, RQSI, cost and four exports.
+  `/dashboard` redirects here, so older links keep working.
+- No chart library: the three shapes are inline SVG and flex, so the dashboard adds no bundle
+  and no second set of dark-mode colours to drift out of step with the app's.
 
 - Filter by audit, type, **surface** (everywhere / street only / sidewalk), severity ≥, status
-  or `needs review`; the header counts `57 of 57 hazards`, so a filter that hides half the
+  or `needs review`; the filter bar counts `57 of 57 hazards`, so a filter that hides half the
   street says so. Masks too small to judge are held out of that count and offered separately as
   `12 too small · show` - one click reveals them, with a `TOO SMALL` chip (see section 5c).
 - Every row carries a severity badge, **the frame the hazard was found on**, its street, a

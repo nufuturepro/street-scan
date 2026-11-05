@@ -84,7 +84,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
 
   if (!detection) {
     return (
-      <div className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
+      <div className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
         Select a hazard to assemble its work order.
       </div>
     );
@@ -131,18 +131,18 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
     setTimeout(() => setSaved(false), 1600);
   };
 
-  const field = 'mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs';
+  const field = 'mt-1 w-full rounded border border-line bg-bg px-2 py-1 text-xs';
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+    <div className="panel">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2">
+        <span className="label">
           Open311 work order
         </span>
         <div className="flex gap-2">
           <button
             onClick={copy}
-            className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-zinc-500"
+            className="rounded border border-line px-2 py-1 text-[11px] text-ink/90 hover:border-raised"
           >
             {copied ? 'Copied' : 'Copy JSON'}
           </button>
@@ -150,7 +150,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
       </div>
 
       {rejected && (
-        <p className="border-b border-red-900 bg-red-950/50 px-3 py-2 text-[11px] text-red-300">
+        <p className="border-b border-red-900 bg-bad/10/50 px-3 py-2 text-[11px] text-bad">
           Marked <strong>not a hazard</strong>. It is out of the grades,
           corroboration and every export until you restore it.
         </p>
@@ -158,7 +158,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
 
       <div className="grid grid-cols-3 gap-2 px-3 py-3">
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Hazard type</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted">Hazard type</span>
           <select
             value={hazardType}
             onChange={(e) => setHazardType(e.target.value as HazardType)}
@@ -172,7 +172,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Severity</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted">Severity</span>
           <select
             value={severity}
             onChange={(e) =>
@@ -188,14 +188,14 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Priority</span>
-          <div className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs tabular-nums text-zinc-400">
+          <span className="text-[10px] uppercase tracking-wide text-muted">Priority</span>
+          <div className="mt-1 w-full rounded border border-line bg-bg px-2 py-1 text-xs tabular-nums text-muted">
             {detection.priority} · {detection.serviceCode}
           </div>
         </label>
 
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Latitude</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted">Latitude</span>
           <input
             value={lat}
             onChange={(e) => setLat(e.target.value)}
@@ -204,7 +204,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Longitude</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted">Longitude</span>
           <input
             value={lon}
             onChange={(e) => setLon(e.target.value)}
@@ -213,7 +213,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Street</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted">Street</span>
           <input
             value={street}
             onChange={(e) => setStreet(e.target.value)}
@@ -222,7 +222,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">Cross street</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted">Cross street</span>
           <input
             value={crossStreet}
             onChange={(e) => setCrossStreet(e.target.value)}
@@ -239,7 +239,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           a person added.
         */}
         <label className="col-span-3 block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+          <span className="text-[10px] uppercase tracking-wide text-muted">
             Description (goes into the work order)
           </span>
           <textarea
@@ -251,7 +251,7 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           />
         </label>
         <label className="col-span-3 block">
-          <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+          <span className="text-[10px] uppercase tracking-wide text-muted">
             Reviewer note (extra detail for the crew)
           </span>
           <textarea
@@ -263,23 +263,23 @@ export default function WorkOrderPanel({ detection, onPatch }: Props) {
           />
         </label>
         <div className="col-span-2 flex items-end justify-end gap-2">
-          <span className="mr-auto text-[10px] leading-tight text-zinc-500">
+          <span className="mr-auto text-[10px] leading-tight text-muted">
             Type and severity set the service code, priority and street grade.
           </span>
           <button
             onClick={save}
-            className="rounded border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:border-amber-500 hover:text-amber-300"
+            className="rounded border border-line px-2.5 py-1 text-[11px] text-ink/90 hover:border-accent hover:text-gold"
           >
             {saved ? 'Applied' : 'Apply corrections'}
           </button>
         </div>
       </div>
 
-      <pre className="max-h-72 overflow-auto border-t border-zinc-800 bg-zinc-950 px-3 py-3 text-[11px] leading-relaxed text-emerald-200/90">
+      <pre className="max-h-72 overflow-auto border-t border-line bg-bg px-3 py-3 text-[11px] leading-relaxed text-good/90">
         {payload ? JSON.stringify(payload, null, 2) : 'loading…'}
       </pre>
 
-      <p className="border-t border-zinc-800 px-3 py-2 text-[10px] text-zinc-500">
+      <p className="border-t border-line px-3 py-2 text-[10px] text-muted">
         Assembled, not submitted. Filing against a live 311 endpoint needs a jurisdiction
         account and that city&apos;s real service codes.
       </p>

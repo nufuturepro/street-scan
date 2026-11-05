@@ -182,53 +182,53 @@ export default function InspectClient({
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-300">
+        <Link href="/" className="text-sm text-muted hover:text-ink/90">
           ← audits
         </Link>
         <h1 className="text-lg font-semibold">{data?.job.name ?? 'Loading…'}</h1>
-        <span className="text-xs text-zinc-500">#{id}</span>
+        <span className="text-xs text-muted">#{id}</span>
 
         <div className="ml-auto flex flex-wrap items-center gap-3 text-xs">
-          <span className="rounded border border-zinc-700 px-2 py-1 tabular-nums text-zinc-400">
+          <span className="rounded border border-line px-2 py-1 tabular-nums text-muted">
             {counts.detected} detected · {counts.verified} verified · {counts.filed} filed
           </span>
           {rejected > 0 && (
             <span
-              className="rounded border border-red-800 bg-red-950 px-2 py-1 tabular-nums text-red-300"
+              className="rounded border border-bad/40 bg-bad/10 px-2 py-1 tabular-nums text-bad"
               title="marked not a hazard - excluded from grades and exports"
             >
               {rejected} rejected
             </span>
           )}
           {needsReview > 0 && (
-            <span className="rounded border border-amber-700 bg-amber-950 px-2 py-1 text-amber-300">
+            <span className="rounded border border-gold/40 bg-gold/10 px-2 py-1 text-gold">
               {needsReview} need review
             </span>
           )}
-          <span className="text-zinc-500">
+          <span className="text-muted">
             GPS: {data ? (data.gps.samples ? `${data.gps.samples} fixes` : 'none') : '—'}
           </span>
         </div>
       </div>
 
       {progress && (
-        <div className="mb-5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+        <div className="mb-5 panel px-4 py-3">
           <div className="flex items-center gap-3 text-sm">
-            <span className={`h-2 w-2 rounded-full ${running ? 'bg-amber-400 pulse-soft' : 'bg-emerald-400'}`} />
-            <span className="text-zinc-300">
+            <span className={`h-2 w-2 rounded-full ${running ? 'bg-gold pulse-soft' : 'bg-good'}`} />
+            <span className="text-ink/90">
               {STAGE_LABEL[progress.stage] ?? progress.stage}
             </span>
-            <span className="text-zinc-500 text-xs">{progress.message}</span>
+            <span className="text-muted text-xs">{progress.message}</span>
             {progress.clientMode && (
-              <span className="ml-auto rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] uppercase text-zinc-500">
+              <span className="ml-auto rounded border border-line px-1.5 py-0.5 text-[10px] uppercase text-muted">
                 {progress.clientMode === 'live' ? 'live API' : 'fixtures'}
               </span>
             )}
           </div>
           {progress.total > 0 && (
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-800">
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface2">
               <div
-                className="h-full bg-amber-400 transition-[width] duration-300"
+                className="h-full bg-gold transition-[width] duration-300"
                 style={{ width: `${Math.min(100, (progress.done / progress.total) * 100)}%` }}
               />
             </div>
@@ -237,7 +237,7 @@ export default function InspectClient({
       )}
 
       {displayError && (
-        <div className="mb-5 rounded-lg border border-red-800 bg-red-950/60 px-4 py-3 text-sm text-red-300">
+        <div className="mb-5 rounded-lg border border-bad/40 bg-bad/10 px-4 py-3 text-sm text-bad">
           {displayError}
           <button
             onClick={() => {
@@ -281,7 +281,7 @@ export default function InspectClient({
             </div>
           )}
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <h2 className="label">
               Detections
             </h2>
             {tinyCount > 0 && (
@@ -290,8 +290,8 @@ export default function InspectClient({
                 title="masks under 2.5% of the frame across - out of the grade and the exports"
                 className={`rounded border px-1.5 py-0.5 text-[10px] ${
                   showTiny
-                    ? 'border-amber-700 bg-amber-950 text-amber-300'
-                    : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                    ? 'border-gold/40 bg-gold/10 text-gold'
+                    : 'border-line text-muted hover:border-raised hover:text-ink/90'
                 }`}
               >
                 {showTiny ? 'hide too small' : `${tinyCount} too small · show`}

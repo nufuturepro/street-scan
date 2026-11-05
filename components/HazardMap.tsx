@@ -342,8 +342,8 @@ export default function HazardMap({
       })}
     </MapContainer>
       {segments.length > 0 && (
-        <div className="absolute bottom-2 left-2 z-[1000] rounded border border-zinc-700 bg-zinc-950/85 px-2.5 py-2 text-[11px] text-zinc-300">
-          <div className="mb-1.5 font-medium uppercase tracking-wider text-zinc-500">
+        <div className="absolute bottom-2 left-2 z-[1000] rounded border border-line bg-bg/85 px-2.5 py-2 text-[11px] text-ink/90">
+          <div className="mb-1.5 font-medium uppercase tracking-wider text-muted">
             Route quality
           </div>
           {(['green', 'yellow', 'red'] as const).map((g) => {
@@ -367,27 +367,27 @@ export default function HazardMap({
                   className="inline-block h-2 w-5 rounded-sm"
                   style={{ background: GRADE_COLOR[g] }}
                 />
-                <span className={active ? 'text-zinc-100' : ''}>
+                <span className={active ? 'text-ink' : ''}>
                   {GRADE_LABEL[g]}
                 </span>
-                <span className="ml-auto tabular-nums text-zinc-500">
+                <span className="ml-auto tabular-nums text-muted">
                   {route.counts[g]}
                 </span>
               </button>
             );
           })}
-          <div className="mt-1.5 border-t border-zinc-800 pt-1 text-zinc-500">
+          <div className="mt-1.5 border-t border-line pt-1 text-muted">
             {gradeFilter
               ? `${drawn.length} of ${segments.length} segments shown`
               : `${segments.length} segments · ${Math.round(route.totalLengthM)} m`}
           </div>
           {segments.some((s) => s.passes > 1) && (
-            <div className="mt-1 text-zinc-500">
+            <div className="mt-1 text-muted">
               {segments.filter((s) => s.passes > 1).length} shared ·{' '}
               {segments.filter((s) => s.disagree).length} disagree
             </div>
           )}
-          <div className="mt-1 text-[10px] text-zinc-600">
+          <div className="mt-1 text-[10px] text-muted2">
             {gradeFilter
               ? 'click the lit grade to show all'
               : 'click a grade to filter · a stretch for its grade'}

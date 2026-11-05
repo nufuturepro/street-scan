@@ -71,36 +71,36 @@ export default function SettingsClient() {
   const live = status?.live.ok ?? false;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <Link href="/dashboard" className="text-xs text-zinc-500 hover:text-amber-400">
+    <div className="mx-auto max-w-3xl px-4 py-5">
+      <div className="mb-4 flex items-center gap-3">
+        <h1 className="text-xl font-semibold">Settings</h1>
+        <Link href="/" className="text-xs text-muted hover:text-accent">
           ← back to Dispatch
         </Link>
       </div>
 
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+      <div className="panel p-4">
+        <h2 className="label">
           Model API key
         </h2>
 
         <div className="mt-3 flex items-center gap-2 text-xs">
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${
-              key?.source ? 'bg-emerald-400' : 'bg-amber-400'
+              key?.source ? 'bg-good' : 'bg-gold'
             }`}
           />
           {key?.source === 'stored' && (
-            <span className="text-zinc-300">
-              Pasted here <span className="font-mono text-zinc-500">{key.masked}</span>
+            <span className="text-ink/90">
+              Pasted here <span className="font-mono text-muted">{key.masked}</span>
             </span>
           )}
           {key?.source === 'env' && (
-            <span className="text-zinc-300">
-              From the container environment <span className="font-mono text-zinc-500">{key.masked}</span>
+            <span className="text-ink/90">
+              From the container environment <span className="font-mono text-muted">{key.masked}</span>
             </span>
           )}
-          {!key?.source && <span className="text-amber-400">Not set — audits run on recorded fixtures.</span>}
+          {!key?.source && <span className="text-gold">Not set — audits run on recorded fixtures.</span>}
         </div>
 
         <form
@@ -116,12 +116,12 @@ export default function SettingsClient() {
             onChange={(e) => setDraft(e.target.value)}
             placeholder="paste a new key"
             autoComplete="off"
-            className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-600 focus:outline-none"
+            className="min-w-0 flex-1 rounded border border-line bg-bg px-2.5 py-1.5 font-mono text-sm text-ink placeholder:text-muted2 focus:border-gold/60 focus:outline-none"
           />
           <button
             type="submit"
             disabled={busy || draft.trim().length === 0}
-            className="rounded border border-amber-700 bg-amber-950/70 px-3 py-1.5 text-xs text-amber-300 hover:border-amber-500 disabled:opacity-40"
+            className="rounded border border-gold/40 bg-gold/15 px-3 py-1.5 text-xs text-gold hover:border-accent disabled:opacity-40"
           >
             Save
           </button>
@@ -130,7 +130,7 @@ export default function SettingsClient() {
               type="button"
               onClick={() => void save(true)}
               disabled={busy}
-              className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-500 disabled:opacity-40"
+              className="rounded border border-line px-3 py-1.5 text-xs text-muted hover:border-raised disabled:opacity-40"
               title="forget the pasted key and fall back to the environment"
             >
               Clear
@@ -138,10 +138,10 @@ export default function SettingsClient() {
           )}
         </form>
 
-        {message && <p className="mt-2 text-xs text-emerald-400">{message}</p>}
-        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {message && <p className="mt-2 text-xs text-good">{message}</p>}
+        {error && <p className="mt-2 text-xs text-bad">{error}</p>}
 
-        <p className="mt-3 border-t border-zinc-800 pt-2.5 text-[11px] leading-relaxed text-zinc-600">
+        <p className="mt-3 border-t border-line pt-2.5 text-[11px] leading-relaxed text-muted2">
           Stored server-side in this install&apos;s database and sent only to this
           server — it is never rendered back to the browser. This deployment has
           no login and listens on your LAN: anyone who can reach this page can
@@ -149,8 +149,8 @@ export default function SettingsClient() {
         </p>
       </div>
 
-      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+      <div className="mt-4 panel p-4">
+        <h2 className="label">
           API status
         </h2>
         {status ? (
@@ -158,26 +158,26 @@ export default function SettingsClient() {
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 ${
                 live
-                  ? 'border-emerald-700 bg-emerald-950 text-emerald-300'
-                  : 'border-amber-700 bg-amber-950 text-amber-300'
+                  ? 'border-good/40 bg-good/10 text-good'
+                  : 'border-gold/40 bg-gold/10 text-gold'
               }`}
             >
-              <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-good' : 'bg-gold'}`} />
               {live ? 'live API' : 'fixtures'}
             </span>
-            <span className="text-zinc-500">{status.live.detail}</span>
-            <span className="ml-auto text-zinc-600">mode: {status.mode}</span>
+            <span className="text-muted">{status.live.detail}</span>
+            <span className="ml-auto text-muted2">mode: {status.mode}</span>
           </div>
         ) : (
-          <p className="mt-2 text-xs text-zinc-600">checking…</p>
+          <p className="mt-2 text-xs text-muted2">checking…</p>
         )}
-        <p className="mt-2.5 border-t border-zinc-800 pt-2.5 text-[11px] leading-relaxed text-zinc-600">
-          <code className="text-zinc-500">META_API_MODE</code> decides the world
-          the pipeline runs in: <code className="text-zinc-500">auto</code>{' '}
+        <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] leading-relaxed text-muted2">
+          <code className="text-muted">META_API_MODE</code> decides the world
+          the pipeline runs in: <code className="text-muted">auto</code>{' '}
           (default) probes the key once and falls back to recorded fixtures when
-          billing blocks the call; <code className="text-zinc-500">fixture</code>{' '}
-          never calls the API; <code className="text-zinc-500">live</code> always
-          does. Set it in <code className="text-zinc-500">.env</code>.
+          billing blocks the call; <code className="text-muted">fixture</code>{' '}
+          never calls the API; <code className="text-muted">live</code> always
+          does. Set it in <code className="text-muted">.env</code>.
         </p>
       </div>
     </div>

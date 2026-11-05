@@ -141,7 +141,7 @@ export default function VideoPane({ src, detections, activeId, seekToken, seekMs
             onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
           />
         ) : (
-          <div className="flex aspect-video w-full items-center justify-center text-sm text-zinc-500">
+          <div className="flex aspect-video w-full items-center justify-center text-sm text-muted">
             Waiting for transcode…
           </div>
         )}
@@ -154,7 +154,7 @@ export default function VideoPane({ src, detections, activeId, seekToken, seekMs
       {/* Hazard timeline: tick per detection, click to jump to it. */}
       {duration > 0 && detections.length > 0 && (
         <div className="mt-2">
-          <div className="relative h-6 rounded bg-zinc-900 border border-zinc-800">
+          <div className="relative h-6 rounded bg-surface2 border border-line">
             {detections.map((d) => {
               const pct = Math.min(100, Math.max(0, (d.tMs / 1000 / duration) * 100));
               return (

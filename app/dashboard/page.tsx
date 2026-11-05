@@ -1,7 +1,9 @@
-import DashboardClient from '@/components/DashboardClient';
+import { redirect } from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
-
+/*
+ * Dispatch moved to /. Kept as a redirect rather than deleted so bookmarks,
+ * the README's older links and anything already open keep working.
+ */
 export default function DashboardPage() {
-  return <DashboardClient />;
+  redirect('/');
 }

@@ -52,13 +52,13 @@ export default function CostMeter({
   });
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+    <div className="rounded-lg border border-line bg-surface/60 p-3">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted">
           Audit cost
         </h2>
         {cost.simulated && (
-          <span className="rounded border border-amber-700 bg-amber-950 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+          <span className="rounded border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gold">
             simulated
           </span>
         )}
@@ -68,12 +68,12 @@ export default function CostMeter({
         {cost.lines.map((row) => (
           <div key={row.label} className="flex items-baseline justify-between gap-3">
             <dt className="min-w-0">
-              <span className="text-xs text-zinc-400">{row.label}</span>
-              <span className="block truncate text-[10px] text-zinc-600">{row.detail}</span>
+              <span className="text-xs text-muted">{row.label}</span>
+              <span className="block truncate text-[10px] text-muted2">{row.detail}</span>
             </dt>
             <dd
               className={`shrink-0 font-mono text-xs tabular-nums ${
-                row.usd > 0 ? 'text-zinc-200' : 'text-zinc-600'
+                row.usd > 0 ? 'text-ink' : 'text-muted2'
               }`}
             >
               {usd(row.usd)}
@@ -82,29 +82,29 @@ export default function CostMeter({
         ))}
       </dl>
 
-      <div className="mt-2.5 flex items-end justify-between gap-3 border-t border-zinc-800 pt-2.5">
+      <div className="mt-2.5 flex items-end justify-between gap-3 border-t border-line pt-2.5">
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-zinc-600">Total</div>
+          <div className="text-[10px] uppercase tracking-wide text-muted2">Total</div>
           <Link
             href={jobId != null ? `/costs#job-${jobId}` : '/costs'}
-            className="text-2xl font-semibold tabular-nums text-zinc-100 hover:text-amber-400"
+            className="text-2xl font-semibold tabular-nums text-ink hover:text-gold"
             title="full expense breakdown for every audit"
           >
             {usd(cost.totalUsd)} →
           </Link>
         </div>
         <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wide text-zinc-600">Per km</div>
-          <div className="text-sm tabular-nums text-zinc-200">
+          <div className="text-[10px] uppercase tracking-wide text-muted2">Per km</div>
+          <div className="text-sm tabular-nums text-ink">
             {cost.perKmUsd != null ? perKmLabel(cost.perKmUsd) : '—'}
           </div>
-          <div className="text-[10px] text-zinc-600">
+          <div className="text-[10px] text-muted2">
             {cost.distanceM != null ? `${km(cost.distanceM)} graded` : 'no GPS track'}
           </div>
         </div>
       </div>
 
-      <p className="mt-2 border-t border-zinc-800 pt-1.5 text-[10px] leading-relaxed text-zinc-600">
+      <p className="mt-2 border-t border-line pt-1.5 text-[10px] leading-relaxed text-muted2">
         {cost.simulated
           ? 'Recorded fixtures - what this run would have cost at published rates, not a charge.'
           : cost.projected

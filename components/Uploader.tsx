@@ -20,7 +20,7 @@ import Link from 'next/link';
  * staged, the footage upload sends autostart=0 and the GPS upload enqueues
  * instead - otherwise the pipeline would read GPS before it finished landing.
  */
-export default function Uploader() {
+export default function Uploader({ compact = false }: { compact?: boolean } = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [pct, setPct] = useState<number | null>(null);
@@ -124,10 +124,12 @@ export default function Uploader() {
           const f = e.dataTransfer.files?.[0];
           if (f) upload(f);
         }}
-        className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-12 text-center cursor-pointer transition-colors ${
+        className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 text-center cursor-pointer transition-colors ${
+          compact ? 'py-8' : 'py-12'
+        } ${
           dragging
-            ? 'border-amber-400 bg-amber-950/30'
-            : 'border-zinc-700 bg-zinc-900/50 hover:border-zinc-500'
+            ? 'border-gold bg-gold/10'
+            : 'border-line bg-surface/50 hover:border-raised'
         }`}
       >
         <input
@@ -141,18 +143,18 @@ export default function Uploader() {
             e.target.value = '';
           }}
         />
-        <span className="text-sm text-zinc-300">{status}</span>
-        <span className="text-xs text-zinc-500">MP4 or MOV</span>
+        <span className="text-sm text-ink/90">{status}</span>
+        <span className="text-xs text-muted">MP4 or MOV</span>
         {pct !== null && (
-          <div className="h-1.5 w-64 max-w-full overflow-hidden rounded-full bg-zinc-800">
+          <div className="h-1.5 w-64 max-w-full overflow-hidden rounded-full bg-surface2">
             <div
-              className="h-full bg-amber-400 transition-[width] duration-200"
+              className="h-full bg-gold transition-[width] duration-200"
               style={{ width: `${pct}%` }}
             />
           </div>
         )}
       </label>
-      <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200">
+      <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted transition-colors hover:text-ink">
         <input
           type="file"
           accept=".insv,.mp4,.mov,video/*"
@@ -164,31 +166,32 @@ export default function Uploader() {
           }}
         />
         {source ? (
-          <span className="text-emerald-400">✓ GPS source attached · {source.name}</span>
+          <span className="text-good">✓ GPS source attached · {source.name}</span>
         ) : (
           <span>+ Attach the original recording for GPS — flattening drops it</span>
         )}
       </label>
       {error && (
-        <p className="mt-3 text-sm text-red-400" role="alert">
+        <p className="mt-3 text-sm text-bad" role="alert">
           {error}
         </p>
-      )}
-      {queued && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-300">
+      )}        {queued && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-good/30 bg-good/10 px-3 py-2 text-sm text-good">
           <span>
             #{queued.id} queued — scanning starts in the background. You can
             upload more while it runs.
           </span>
           <Link
             href={`/inspect/${queued.id}`}
-            className="text-amber-400 hover:text-amber-300"
+            className="text-gold hover:text-gold"
           >
             Watch it →
           </Link>
-          <Link href="/" className="text-zinc-500 hover:text-zinc-300">
-            (stay here)
-          </Link>
+          {!compact && (
+            <Link href="/" className="text-muted hover:text-ink/90">
+              (stay here)
+            </Link>
+          )}
         </div>
       )}
     </div>

@@ -53,7 +53,7 @@ export default function StatusPill() {
   }, []);
 
   if (!status) {
-    return <span className="text-xs text-zinc-600">checking…</span>;
+    return <span className="text-xs text-muted2">checking…</span>;
   }
 
   const live = status.live.ok;
@@ -63,17 +63,17 @@ export default function StatusPill() {
       <span
         className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 border ${
           live
-            ? 'border-emerald-700 bg-emerald-950 text-emerald-300'
-            : 'border-amber-700 bg-amber-950 text-amber-300'
+            ? 'border-good/40 bg-good/10 text-good'
+            : 'border-gold/40 bg-gold/10 text-gold'
         }`}
         title={status.billing.message ?? status.live.detail}
       >
-        <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-emerald-400' : 'bg-amber-400 pulse-soft'}`} />
+        <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-good' : 'bg-gold pulse-soft'}`} />
         {live ? 'live API' : 'fixtures'}
       </span>
       <Link
         href="/costs"
-        className="hidden sm:inline text-zinc-500 tabular-nums hover:text-amber-400"
+        className="hidden sm:inline text-muted tabular-nums hover:text-gold"
         title="expense breakdown — what each audit cost"
       >
         ${(status.cost.usd).toFixed(3)} / ${status.cost.creditUsd} →
@@ -83,7 +83,7 @@ export default function StatusPill() {
           href={status.billing.url}
           target="_blank"
           rel="noreferrer"
-          className="hidden md:inline text-amber-400 hover:text-amber-300 underline underline-offset-2"
+          className="hidden md:inline text-gold hover:text-gold underline underline-offset-2"
         >
           fix billing
         </a>
