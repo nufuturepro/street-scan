@@ -498,12 +498,39 @@ function parsedShape(data: unknown): Record<string, unknown> {
  * pothole work order: a fabricated filing is worse than a skipped detection,
  * and the pipeline counts rejects out loud.
  */
+/**
+ * Map the classifier's words onto the taxonomy.
+ *
+ * An exact enum match used to be the only thing that survived, and everything
+ * else became not_a_defect - so a perfectly good answer worded "Potholes",
+ * "alligator crack" or "pothole (sunken)" was silently filed as a refusal.
+ * That turned a wording difference into a lost hazard, and it is a large part
+ * of why recall looked broken. Now the vocabulary is matched, and a refusal
+ * only happens when the answer actually names a non-defect.
+ */
+const REJECT_WORDS = ['not_a_defect', 'not_a_hazard', 'manhole', 'cover', 'lid', 'valve', 'marking', 'shadow', 'drain', 'intact'];
+
+const TYPE_WORDS: Array<[HazardType, string[]]> = [
+  ['cave_in', ['cave', 'sink', 'collapse', 'subsiden']],
+  ['pothole', ['pothole', 'pot_hole', 'pit']],
+  ['crack', ['crack', 'alligator', 'fissure', 'ravel']],
+  ['blocked_lane', ['block', 'obstruct', 'parked', 'encroach']],
+  ['debris', ['debris', 'gravel', 'pallet', 'litter', 'spill']],
+];
+
 export function normalizeType(v: unknown): HazardType | 'not_a_defect' {
   if (v == null) return 'pothole';
   const requested = String(v).trim().toLowerCase().replace(/[\s-]+/g, '_');
-  return (HAZARD_TYPES as readonly string[]).includes(requested)
-    ? (requested as HazardType)
-    : 'not_a_defect';
+  if ((HAZARD_TYPES as readonly string[]).includes(requested)) {
+    return requested as HazardType;
+  }
+  // A hazard word wins over a reject word: "pothole, not a manhole cover" is
+  // still a pothole, and the rubric invites exactly that phrasing.
+  for (const [type, words] of TYPE_WORDS) {
+    if (words.some((w) => requested.includes(w))) return type;
+  }
+  if (REJECT_WORDS.some((w) => requested.includes(w))) return 'not_a_defect';
+  return 'not_a_defect';
 }
 
 function normalize(raw: Record<string, unknown>): Classification {

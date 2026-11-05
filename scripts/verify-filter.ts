@@ -12,7 +12,7 @@
  */
 import { chunkWindows } from '../lib/chunking';
 import { resolveTracks, buildTracks, persists } from '../lib/filter';
-import { ANALYSIS_FPS, CHUNK_FRAMES } from '../lib/config';
+import { ANALYSIS_FPS, CHUNK_FRAMES, MIN_PERSISTENT_FRAMES } from '../lib/config';
 import type { TaggedFrame } from '../lib/filter';
 
 const TOTAL = 7000; // frames at 10fps = 700s of footage
@@ -75,13 +75,26 @@ frames.push(...persistentFrames(1, 2850, 3500, 3560, 3));
 frames.push(...persistentFrames(1, 2850, 5760, 5830, 11));
 frames.push(...persistentFrames(2, 5700, 5760, 5830, 2));
 
-// 4. Transients: a 4-frame flicker. Must be discarded by the frame-count test.
-for (const f of [400, 401, 402, 403]) {
-  frames.push({ frameIndex: f, chunkId: 0, objectId: 99, score: 0.95, polygon: rect(0.1, 0.1, 0.05, 0.05) });
+// 4. Transients: a flicker one frame short of the floor. Must be discarded by
+//    the frame-count test - expressed against the constant so this assertion
+//    keeps testing the rule after the floor moves.
+for (let i = 0; i < MIN_PERSISTENT_FRAMES - 1; i++) {
+  frames.push({
+    frameIndex: 400 + i,
+    chunkId: 0,
+    objectId: 99,
+    score: 0.95,
+    polygon: rect(0.1, 0.1, 0.05, 0.05),
+  });
 }
 
 // 5. A codec-noise burst: 6 contiguous frames = 500ms at 10fps.
-//    Passes the frame-count test (>= 6) but must be discarded by duration (< 600ms).
+//
+//    This one is now KEPT, and that is the loose-floor trade-off written down:
+//    at 5 frames / 400ms a 500ms burst clears both tests. It is not silently
+//    accepted as a hazard - the classifier still sees the crop and can call it
+//    not_a_defect - but the filter no longer removes it, and pretending
+//    otherwise in a test would hide a real change in behaviour.
 for (let i = 0; i < 6; i++) {
   frames.push({
     frameIndex: 5000 + i,
@@ -115,14 +128,14 @@ assert(built.length === 8, `raw tracks grouped by (chunk, objectId) - got ${buil
 
 const unresolved = built.filter(persists);
 assert(
-  unresolved.length === 6,
-  `flicker killed by frame count, burst killed by duration - got ${unresolved.length} of 8`
+  unresolved.length === 7,
+  `flicker killed by frame count, the 500ms burst now survives - got ${unresolved.length} of 8`
 );
 
 const resolved = resolveTracks(frames, ANALYSIS_FPS);
 assert(
-  resolved.length === 4,
-  `seam-crossing pairs merged into 4 hazards - got ${resolved.length}`
+  resolved.length === 5,
+  `seam-crossing pairs merged into 5 hazards (4 defects + the kept burst) - got ${resolved.length}`
 );
 
 const seam = resolved.find((t) => t.firstFrame === 2900);
@@ -138,7 +151,7 @@ assert(!!plain && plain.frameCount === 61, 'the in-chunk hazard survived unchang
 
 const firsts = resolved.map((t) => t.firstFrame).sort((a, b) => a - b);
 assert(
-  JSON.stringify(firsts) === JSON.stringify([1000, 2900, 3500, 5760]),
+  JSON.stringify(firsts) === JSON.stringify([1000, 2900, 3500, 5000, 5760]),
   `exactly the expected hazards, no false merges - got ${JSON.stringify(firsts)}`
 );
 

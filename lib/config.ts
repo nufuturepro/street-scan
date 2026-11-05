@@ -51,11 +51,20 @@ export const OVERLAY_SPIKE_M = 50;
 /** Frames of overlap between chunks, used to re-join object IDs. */
 export const CHUNK_OVERLAP_FRAMES = 150;
 
-/** A hazard must be seen in at least this many frames to survive. */
-export const MIN_PERSISTENT_FRAMES = 6;
+/**
+ * A hazard must be seen in at least this many frames to survive.
+ *
+ * Loosened from 6 frames / 600 ms: on audit #4 that pair kept 3 cracks out of
+ * 67 s of visibly broken asphalt, because a hairline crossing the frame is only
+ * legible for a few tenths of a second at speed. Shadows and glare are what
+ * this pair was protecting against, and the classifier still rejects those by
+ * looking at the crop - so the cost of lowering it is extra Spark calls, not
+ * extra work orders.
+ */
+export const MIN_PERSISTENT_FRAMES = 5;
 
 /** ...and for at least this long. Filters shadows, glare, birds. */
-export const MIN_PERSISTENT_MS = 600;
+export const MIN_PERSISTENT_MS = 400;
 
 /** Overlap (IoU) below this between two boxes means "different object". */
 export const MERGE_IOU_THRESHOLD = 0.3;
@@ -67,17 +76,20 @@ export const REVIEW_CONFIDENCE_THRESHOLD = 0.75;
  * Size gate: a mask narrower than this fraction of the frame is too small to
  * judge, and so is one under MIN_MASK_AREA_FRAC of the frame's area.
  *
- * Measured on this project's own 76 detections rather than guessed. At 854x480
- * the width floor is ~21 px: it catches the 13x28 px speck that audit #13
- * filed at severity 4 and turned a strip of Brooklyn Ave red, plus three other
- * 10-20 px masks, while keeping every defect that fills even a tenth of the
- * frame. A real pothole 3 m from the bumper is 80-200 px across, so the floor
- * sits an order of magnitude clear of honest near-field evidence.
+ * Measured on this project's own 76 detections rather than guessed: at 854x480
+ * this floor is ~13 px, which still catches the 13x28 px speck that audit #13
+ * filed at severity 4 (and the 10-20 px masks beside it) while admitting
+ * near-field cracks that 2.5% used to hide. A real pothole 3 m from the bumper
+ * is 80-200 px across, so the floor stays clear of honest close evidence.
+ *
+ * Lowered from 2.5% when audit #4 was found to be under-reporting cracks: at
+ * 2.5% (~48 px on 1080p) a narrow patch crack never reached the classifier at
+ * all, and a rejection the classifier never sees cannot be argued with.
  */
-export const MIN_MASK_WIDTH_FRAC = 0.025;
+export const MIN_MASK_WIDTH_FRAC = 0.015;
 
 /** ...and the same verdict for tall, thin masks that slip past the width test. */
-export const MIN_MASK_AREA_FRAC = 0.0008;
+export const MIN_MASK_AREA_FRAC = 0.0005;
 
 /**
  * Two detections from the SAME audit this close together are one defect filed
